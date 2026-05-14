@@ -1,2 +1,71 @@
-/.DS_Store
-/wlasny-lepszy-ksef.code-workspace
+# === SECRETS — never commit ===
+*.env
+.env.*
+!.env.example
+!ksef_app/.env.example
+
+# === Python ===
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.py,cover
+.Python
+*.egg-info/
+pip-wheel-metadata/
+dist/
+build/
+*.egg
+
+# === Packaging / local installs ===
+.installed.cfg
+site/
+
+# === Virtual environments ===
+.venv/
+venv/
+env/
+ENV/
+
+# === Logs & runtime data ===
+logs/
+*.log
+
+# === Test & coverage artefacts ===
+.pytest_cache/
+*/.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# === Jupyter ===
+.ipynb_checkpoints/
+
+# === Type checker & linter caches ===
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+
+# === IDE / OS ===
+.vscode/settings.json
+.vscode/.ropeproject/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# === Database files ===
+*.db
+*.sqlite
+*.sqlite3
+
+# === Alembic generated (keep versions/, ignore local state) ===
+alembic/versions/__pycache__/
+
+# === Local test / temp files ===
+tmp/
+temp/
+*.tmp
