@@ -3,18 +3,19 @@ import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
+from app.core.config import settings
 from app.workers.job_worker import JobWorker
 
 logger = logging.getLogger(__name__)
 
 
 def run_scheduler() -> None:
-    worker = JobWorker()
+    worker = JobWorker(name="scheduler")
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         worker.process_next_job,
         "interval",
-        seconds=10,
+        seconds=settings.scheduler_interval,
         id="job_worker_tick",
         # Prevent concurrent invocations: if a job takes longer than the
         # interval, APScheduler would otherwise spawn a second call while the
@@ -24,7 +25,7 @@ def run_scheduler() -> None:
     )
     scheduler.start()
 
-    logger.info("Scheduler started.")
+    logger.info("Scheduler started (interval: %ss).", settings.scheduler_interval)
     try:
         while True:
             time.sleep(60)

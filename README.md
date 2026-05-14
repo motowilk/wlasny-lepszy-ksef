@@ -503,6 +503,10 @@ DEFAULT_NOTIFICATION_EMAIL=accountant@example.com
 LOG_LEVEL=INFO
 LOG_DIR=logs
 
+# Worker tuning (opcjonalne)
+WORKER_POLL_INTERVAL=5    # opóźnienie bezczynnego job_worker między sprawdzeniami kolejki (sekundy)
+SCHEDULER_INTERVAL=10     # interwał schedulera APScheduler (sekundy)
+
 ADMIN_DEFAULT_PASSWORD=<haslo_dla_uzytkownika_admin>
 ```
 
@@ -898,7 +902,7 @@ Te procesy nie są wymagane do samego uruchomienia interfejsu WWW, ale są potrz
 
 Worker kolejek:
 
-Ten proces działa w pętli i pobiera z bazy kolejne zadania integracyjne ze statusem `NEW`. Obsługuje między innymi wysyłkę do KSeF, odpytywanie o status KSeF oraz wysyłkę powiadomień.
+Ten proces działa w pętli i pobiera z bazy kolejne zadania integracyjne ze statusem `NEW`. Obsługuje między innymi wysyłkę do KSeF, odpytywanie o status KSeF oraz wysyłkę powiadomień. Gdy kolejka jest pusta, czeka `WORKER_POLL_INTERVAL` sekund (domyślnie 5) przed kolejnym sprawdzeniem.
 
 ```bash
 python3 -m app.workers.job_worker
@@ -906,7 +910,7 @@ python3 -m app.workers.job_worker
 
 Scheduler:
 
-Ten proces uruchamia harmonogram APScheduler, który cyklicznie wywołuje przetwarzanie kolejki zadań. To alternatywa dla ciągle działającego workera, gdy chcesz uruchamiać obsługę zadań w interwale czasowym.
+Ten proces uruchamia harmonogram APScheduler, który cyklicznie wywołuje przetwarzanie kolejki zadań. To alternatywa dla ciągle działającego workera, gdy chcesz uruchamiać obsługę zadań w interwale czasowym. Interwał kontrolowany jest przez `SCHEDULER_INTERVAL` (domyślnie 10 sekund).
 
 ```bash
 python3 -m app.workers.scheduler

@@ -230,3 +230,169 @@ h2 {
 .timeline li:last-child {
     border-bottom: none;
 }
+
+/* ==========================================
+   Worker Status Toast Notifications
+   ========================================== */
+
+.ws-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: flex-end;
+    pointer-events: none;
+}
+
+.ws-toast {
+    pointer-events: all;
+    width: 310px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.13), 0 2px 6px rgba(0,0,0,.06);
+    border: 1px solid #e4e9ef;
+    border-left: 4px solid #ccc;
+    overflow: hidden;
+    animation: ws-in .30s cubic-bezier(.22,1,.36,1);
+    font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.ws-toast.ws-closing {
+    animation: ws-out .24s ease forwards;
+}
+
+@keyframes ws-in {
+    from { opacity: 0; transform: translateX(115%); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ws-out {
+    from { opacity: 1; transform: translateX(0); max-height: 300px; }
+    to   { opacity: 0; transform: translateX(115%); max-height: 0; margin-bottom: -10px; }
+}
+
+/* Accent colours + header tints per status */
+.ws-toast-active { border-left-color: #2e7d32; }
+.ws-toast-idle   { border-left-color: #1565c0; }
+.ws-toast-warn   { border-left-color: #e65100; }
+.ws-toast-stale  { border-left-color: #b71c1c; }
+
+.ws-toast-active .ws-toast-head { background: #f1f8e9; }
+.ws-toast-idle   .ws-toast-head { background: #e8f0fe; }
+.ws-toast-warn   .ws-toast-head { background: #fff3e0; }
+.ws-toast-stale  .ws-toast-head { background: #ffebee; }
+
+/* Header */
+.ws-toast-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 10px 9px 14px;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+}
+
+.ws-toast-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #1a2c42;
+    flex: 1;
+}
+
+.ws-toast-x {
+    background: none;
+    border: none;
+    color: #aab4be;
+    cursor: pointer;
+    font-size: 15px;
+    padding: 0 2px 0 10px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color .15s;
+}
+.ws-toast-x:hover { color: #333; }
+
+/* Worker rows */
+.ws-toast-workers {
+    padding: 8px 14px 4px 14px;
+}
+
+.ws-toast-worker {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    border-bottom: 1px solid #f3f4f6;
+}
+.ws-toast-worker:last-child { border-bottom: none; }
+
+.ws-toast-worker-icon {
+    font-size: 11px;
+    padding-top: 2px;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+}
+
+.ws-toast-worker-info { flex: 1; min-width: 0; }
+
+.ws-toast-worker-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #1a2c42;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ws-toast-worker-detail {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ws-detail-active { color: #2e7d32; font-weight: 600; }
+.ws-detail-warn   { color: #e65100; }
+.ws-detail-stale  { color: #b71c1c; }
+
+/* Queue footer */
+.ws-toast-queue {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 14px 8px 14px;
+    background: #f8fafc;
+    border-top: 1px solid #edf0f3;
+    font-size: 11px;
+    color: #555;
+}
+.ws-toast-queue strong { color: #1e3a5f; font-size: 12px; }
+.ws-toast-queue-sep { color: #c0c8d0; }
+
+/* Progress bar */
+.ws-toast-bar {
+    height: 3px;
+    background: #edf0f3;
+    overflow: hidden;
+}
+
+.ws-toast-fill {
+    height: 100%;
+    width: 100%;
+    transform-origin: left center;
+    animation: ws-progress 30s linear forwards;
+}
+
+.ws-fill-active { background: #2e7d32; }
+.ws-fill-idle   { background: #1565c0; }
+.ws-fill-warn   { background: #e65100; }
+.ws-fill-stale  { background: #b71c1c; }
+
+@keyframes ws-progress {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+}

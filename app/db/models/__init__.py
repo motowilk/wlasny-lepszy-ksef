@@ -21,6 +21,7 @@ from app.db.models.invoice_vat_summary import InvoiceVatSummary
 from app.db.models.ksef_session import KsefSession, KsefSessionInvoice
 from app.db.models.notification_log import NotificationLog
 from app.db.models.party import Party
+from app.db.models.worker_heartbeat import WorkerHeartbeat
 
 __all__ = [
     "AccountingBatch",
@@ -47,4 +48,5 @@ __all__ = [
     "KsefSessionInvoice",
     "NotificationLog",
     "Party",
+    "WorkerHeartbeat",
 ]

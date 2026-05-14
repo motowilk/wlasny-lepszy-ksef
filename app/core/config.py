@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_dir: str = Field(default="logs", alias="LOG_DIR")
 
+    # Worker tuning
+    worker_poll_interval: int = Field(default=5, alias="WORKER_POLL_INTERVAL")
+    scheduler_interval: int = Field(default=10, alias="SCHEDULER_INTERVAL")
+
     admin_default_password: str = Field(default="", alias="ADMIN_DEFAULT_PASSWORD")
 
     ksef_api_url: str = Field(

@@ -35,5 +35,113 @@
     <main class="container page-content">
         {% block content %}{% endblock %}
     </main>
+
+{% if current_user %}
+<div id="ws-container" class="ws-container"></div>
+<script>
+(function () {
+    var container = document.getElementById('ws-container');
+
+    function wsAge(s) {
+        if (s < 60) return s + 's';
+        if (s < 3600) return Math.floor(s / 60) + 'min';
+        return Math.floor(s / 3600) + 'h';
+    }
+
+    function wsClose(toast) {
+        if (toast._wsTimer) clearTimeout(toast._wsTimer);
+        toast.classList.add('ws-closing');
+        setTimeout(function () {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+        }, 280);
+    }
+
+    function wsHandleData(data) {
+        var workers   = data.workers || [];
+        var q         = data.queue   || {};
+        var anyActive = workers.some(function (w) { return w.status === 'ACTIVE'; });
+        var anyWarn   = workers.some(function (w) { return w.is_idle_too_long; });
+        var anyStale  = workers.some(function (w) { return w.is_stale; });
+
+        var type  = anyStale ? 'stale' : anyWarn ? 'warn' : anyActive ? 'active' : 'idle';
+        var title = anyStale  ? '\u26d4\ufe0f Worker \u2014 brak sygna\u0142u'
+                  : anyWarn   ? '\u26a0\ufe0f Worker \u2014 idle > 3\u202fmin'
+                  : anyActive ? '\u25b6\ufe0f Workers \u2014 aktywny'
+                  :             '\u25cb Workers \u2014 bezczynny';
+
+        /* --- worker rows --- */
+        var workersHtml;
+        if (!workers.length) {
+            workersHtml =
+                '<div class="ws-toast-worker">' +
+                    '<span class="ws-toast-worker-icon">\u25cb</span>' +
+                    '<div class="ws-toast-worker-info">' +
+                        '<div class="ws-toast-worker-name">Brak zarejestrowanych worker\u00f3w</div>' +
+                        '<div class="ws-toast-worker-detail">Uruchom job_worker lub scheduler</div>' +
+                    '</div>' +
+                '</div>';
+        } else {
+            workersHtml = workers.map(function (w) {
+                var icon = w.is_stale       ? '\u26d4'
+                         : w.is_idle_too_long ? '\u26a0'
+                         : w.status === 'ACTIVE' ? '\u25b6' : '\u25cb';
+                var dCls = w.is_stale         ? 'ws-detail-stale'
+                         : w.is_idle_too_long  ? 'ws-detail-warn'
+                         : w.status === 'ACTIVE' ? 'ws-detail-active' : '';
+                var detail = w.is_stale
+                    ? 'brak sygnału · ' + wsAge(w.last_heartbeat_seconds_ago) + ' temu'
+                    : w.status === 'ACTIVE' && w.current_job_type
+                        ? w.current_job_type + (w.current_job_id ? '\u00a0#' + w.current_job_id : '')
+                        : 'bezczynny · ' + wsAge(w.last_heartbeat_seconds_ago) + ' temu';
+                var displayName = w.worker_id.split(':')[0];  /* strip :PID */
+                return '<div class="ws-toast-worker">' +
+                    '<span class="ws-toast-worker-icon">' + icon + '</span>' +
+                    '<div class="ws-toast-worker-info">' +
+                        '<div class="ws-toast-worker-name">' + displayName + '</div>' +
+                        '<div class="ws-toast-worker-detail ' + dCls + '">' + detail + '</div>' +
+                    '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        /* --- queue footer --- */
+        var qHtml =
+            '<div class="ws-toast-queue">' +
+                '\ud83d\udce5\u00a0Kolejka:&nbsp;' +
+                '<strong>' + (q.new || 0) + '</strong>\u00a0oczekuj\u0105ce' +
+                '<span class="ws-toast-queue-sep">&nbsp;\u00b7&nbsp;</span>' +
+                '<strong>' + (q.processing || 0) + '</strong>\u00a0w\u00a0toku' +
+            '</div>';
+
+        var toast = document.createElement('div');
+        toast.className = 'ws-toast ws-toast-' + type;
+        toast.innerHTML =
+            '<div class="ws-toast-head">' +
+                '<span class="ws-toast-title">' + title + '</span>' +
+                '<button class="ws-toast-x" title="Zamknij">&#x2715;</button>' +
+            '</div>' +
+            '<div class="ws-toast-workers">' + workersHtml + '</div>' +
+            qHtml +
+            '<div class="ws-toast-bar"><div class="ws-toast-fill ws-fill-' + type + '"></div></div>';
+
+        toast.querySelector('.ws-toast-x').addEventListener('click', function () {
+            wsClose(toast);
+        });
+        container.appendChild(toast);
+        toast._wsTimer = setTimeout(function () { wsClose(toast); }, 30000);
+    }
+
+    function wsRefresh() {
+        fetch('/ui/api/worker-status')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) { if (data) wsHandleData(data); })
+            .catch(function () {});
+    }
+
+    wsRefresh();
+    setInterval(wsRefresh, 30000);
+}());
+</script>
+{% endif %}
 </body>
 </html>

@@ -28,6 +28,7 @@ from app.db.models import (
     AppRole,
     AppUser,
     AppUserRole,
+    IntegrationJob,
     Invoice,
     InvoiceParty,
     NotificationLog,
@@ -43,6 +44,86 @@ from app.services.invoice_service import InvoiceService
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 router = APIRouter(tags=["ui"])
+
+
+@router.get("/ui/api/worker-status")
+def ui_worker_status(
+    db: Session = Depends(get_db),
+    session_token: str | None = Cookie(default=None, alias="session"),
+):
+    """Return live worker heartbeat data for the status widget.
+
+    Uses cookie auth directly so the browser-side fetch gets JSON 401
+    instead of an HTML login-page redirect.
+    """
+    from fastapi.responses import JSONResponse
+    from app.db.models.worker_heartbeat import WorkerHeartbeat
+
+    user_id = (
+        decode_ui_session_token(session_token, settings.secret_key)
+        if session_token
+        else None
+    )
+    if user_id is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    IDLE_WARN_SECONDS = 180   # 3 minutes – worker is idle but still checked in recently
+    STALE_SECONDS = 300       # 5 minutes – worker likely stopped
+
+    now = datetime.now(tz=timezone.utc)
+    heartbeats = (
+        db.execute(select(WorkerHeartbeat).order_by(WorkerHeartbeat.worker_id))
+        .scalars()
+        .all()
+    )
+
+    new_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(IntegrationJob)
+            .where(IntegrationJob.status == "NEW")
+        )
+        or 0
+    )
+    processing_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(IntegrationJob)
+            .where(IntegrationJob.status == "PROCESSING")
+        )
+        or 0
+    )
+
+    workers = []
+    any_warning = False
+    for hb in heartbeats:
+        hb_time = hb.last_heartbeat_at
+        if hb_time.tzinfo is None:
+            hb_time = hb_time.replace(tzinfo=timezone.utc)
+        seconds_ago = max(0, int((now - hb_time).total_seconds()))
+        is_stale = seconds_ago >= STALE_SECONDS
+        is_idle_too_long = not is_stale and hb.status == "IDLE" and seconds_ago >= IDLE_WARN_SECONDS
+        if is_stale or is_idle_too_long:
+            any_warning = True
+        workers.append(
+            {
+                "worker_id": hb.worker_id,
+                "status": hb.status,
+                "current_job_type": hb.current_job_type,
+                "current_job_id": hb.current_job_id,
+                "last_heartbeat_seconds_ago": seconds_ago,
+                "is_idle_too_long": is_idle_too_long,
+                "is_stale": is_stale,
+            }
+        )
+
+    return JSONResponse(
+        {
+            "workers": workers,
+            "queue": {"new": new_count, "processing": processing_count},
+            "any_worker_stale": any_warning,
+        }
+    )
 
 
 class UIAuthRequired(Exception):
