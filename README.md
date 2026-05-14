@@ -80,9 +80,9 @@ mysql -u root -p
 
 Po wpisaniu hasła root będziesz w powłoce MySQL i możesz wkleić powyższy blok SQL.
 
-## Krok 4.1. Alternatywa: Kompletny skrypt SQL tworzący całą bazę
+## Krok 4.1. ~~Alternatywa: Kompletny skrypt SQL~~ — nie używaj
 
-Poniżej znajduje się kompletny skrypt SQL, który tworzy wszystkie tabele, relacje, indeksy i inicjalne dane dla bazy `ksef_erp`. Możesz go wykonać zamiast kroków Krok 4 + Krok 7, jeżeli preferencja preferujesz bezpośrednie tworzenie schematu bez użycia migracji Alembic.
+> **Uwaga:** Poniższy blok SQL jest przestarzały i **niezgodny z modelami SQLAlchemy** aplikacji (używa `BIGINT UNSIGNED` zamiast `INTEGER`). Nie wykonuj go. Schemat bazy twórz wyłącznie przez `python scripts/create_tables.py` (Krok 7).
 
 ```sql
 USE mysql;
@@ -454,9 +454,7 @@ CREATE TABLE notification_log (
 ) ENGINE=InnoDB;
 ```
 
-Po wykonaniu tego skryptu baza `ksef_erp` będzie w pełni przygotowana ze wszystkimi tabelami. Następnie można pominąć Krok 7 i przejść bezpośrednio do Kroku 8 (załadowanie danych słownikowych).
-
-Alternatywnie, rekomendujemy używać migracji Alembic (Krok 7), które są łatwiejsze do utrzymania i wersjonowania.
+Powtarzamy: **nie uruchamiaj tego SQL**. Służy tylko jako dokumentacja historyczna.
 
 ## Krok 5. Utwórz plik konfiguracyjny `.env`
 
@@ -520,12 +518,23 @@ Po skonfigurowaniu środowiska aplikacja udostępnia kompletny lokalny system do
 
 ### 1. Model dostępu i uwierzytelnianie
 
-- Aplikacja korzysta z HTTP Basic Auth dla API i interfejsu WWW.
-- Logowanie odbywa się na kontach zapisanych w bazie danych, z hasłami przechowywanymi w postaci hashy bcrypt.
+**Interfejs WWW (`/ui`)** — logowanie przez formularz HTML z sesją cookie:
+- Użytkownik wchodzi na `/ui` → zostaje przekierowany do `/ui/login`.
+- Po wpisaniu loginu i hasła serwer ustawia podpisany `HttpOnly` cookie (`session`) i przekierowuje do dashboardu.
+- Jeśli konto ma ustawiony `totp_secret`, po haśle pojawia się drugi krok weryfikacji kodem TOTP (aplikacja uwierzytelniająca, np. Google Authenticator, Aegis).
+- Wylogowanie przez `/ui/logout` — cookie jest kasowany.
+
+**REST API (`/api/*`)** — HTTP Basic Auth (dla Swagger i klientów API).
+
+- Hasła są przechowywane jako hashe `bcrypt_sha256`; stare hashe `bcrypt` są rozpoznawane i weryfikowane (wsteczna kompatybilność).
 - Po poprawnym logowaniu aktualizowana jest data ostatniego logowania użytkownika.
 - Dostęp do operacji jest ograniczany rolami systemowymi.
-- Obsługiwane role obejmują co najmniej: `admin`, `agent`, `reviewer`, `accountant`, `viewer`.
+- Obsługiwane role: `admin`, `agent`, `reviewer`, `accountant`, `viewer`.
 - Konto `admin` jest tworzone skryptem inicjalizacyjnym na podstawie `ADMIN_DEFAULT_PASSWORD` z `.env`.
+
+**Konfiguracja 2FA (TOTP):**
+
+Aby włączyć weryfikację dwuetapową dla konta, ustaw pole `totp_secret` w tabeli `app_user` na base32-zakodowany sekret (np. generowany przez `pyotp.random_base32()`). Konto bez ustawionego `totp_secret` loguje się jednoetapowo.
 
 ### 2. Interfejs WWW
 
@@ -807,15 +816,29 @@ Migracje tworzą lub rozszerzają następujące komponenty bazy:
 - `party` — słownik stron dokumentów
 - `dicts` — rejestr słowników systemowych (kierunki, typy, statusy, role stron)
 
-### Uruchomienie migracji
+### Nowa baza (pierwsze uruchomienie)
 
-Dla pustej bazy lub przy aktualizacji istniejącej struktury uruchom:
+Dla pustej bazy utwórz schemat bezpośrednio ze skryptu inicjalizacyjnego, który odczytuje modele SQLAlchemy:
+
+```bash
+python scripts/create_tables.py
+```
+
+Następnie oznacz wszystkie migracje jako zastosowane (nie uruchamiaj ich — tabele już istnieją):
+
+```bash
+alembic stamp head
+```
+
+### Aktualizacja istniejącej bazy
+
+Dla bazy utworzonej wcześniej przez `create_tables.py`, przy aktualizacji kodu uruchom:
 
 ```bash
 alembic upgrade head
 ```
 
-Skrypt `python scripts/create_tables.py` pozostaje pomocniczą opcją tylko do jednorazowego bootstrapu pustej lokalnej bazy, jeżeli migracje z jakiegoś powodu nie mogą być uruchomione. Nie służy do aktualizacji istniejącego schematu.
+> **Ważne:** Nie używaj `alembic upgrade head` na nowej, pustej bazie. Migracje zakładają, że podstawowy schemat został już utworzony przez `create_tables.py`.
 
 ## Krok 8. Załaduj dane słownikowe
 
@@ -905,7 +928,7 @@ Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP
 
 | Tabela | Zawartość |
 | --- | --- |
-| `app_user` | Konta użytkowników aplikacji z hasłami, statusami i metadanymi |
+| `app_user` | Konta użytkowników aplikacji z hasłami (bcrypt_sha256), statusami, metadanymi i opcjonalnym sekretem TOTP (`totp_secret`) |
 | `app_role` | Role systemowe: `admin`, `agent`, `reviewer`, `accountant`, `viewer` |
 | `app_user_role` | Powiązania: które role mają konkretni użytkownicy |
 

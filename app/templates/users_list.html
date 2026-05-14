@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Użytkownicy</h1>
+    <a class="btn" href="/ui/users/new">+ Dodaj użytkownika</a>
+</div>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Login</th>
+            <th>Nazwa wyświetlana</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Aktywny</th>
+            <th>Zablokowany</th>
+            <th>2FA</th>
+            <th>Akcje</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for user in users %}
+        <tr>
+            <td>{{ user.username }}</td>
+            <td>{{ user.display_name }}</td>
+            <td>{{ user.email or "—" }}</td>
+            <td>
+                {% set role_names = user.roles | map(attribute='role.role_code') | list %}
+                {{ role_names | join(', ') or "—" }}
+            </td>
+            <td>{{ "✓" if user.is_active else "✗" }}</td>
+            <td>{{ "✗" if user.is_locked else "—" }}</td>
+            <td>{{ "✓" if user.totp_secret else "—" }}</td>
+            <td>
+                <a href="/ui/users/{{ user.id }}/edit">Edytuj</a>
+                {% if user.id != current_user.id %}
+                &nbsp;|&nbsp;
+                <form method="post" action="/ui/users/{{ user.id }}/delete"
+                      style="display:inline"
+                      onsubmit="return confirm('Usunąć użytkownika {{ user.username }}?')">
+                    <button type="submit" class="btn-link">Usuń</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="8" style="text-align:center">Brak użytkowników</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

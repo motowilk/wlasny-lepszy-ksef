@@ -17,11 +17,17 @@
                 <a href="/ui/purchase-invoices">Zakupowe</a>
                 <a href="/ui/accounting-batches">Batche</a>
                 <a href="/ui/notifications">Notyfikacje</a>
+                {% if current_user and (current_user.roles | selectattr('role.role_code', 'equalto', 'admin') | list) %}
+                <a href="/ui/users">Użytkownicy</a>
+                {% endif %}
                 <a href="/docs">API Docs</a>
             </nav>
 
             <div class="user-box">
                 {{ current_user.display_name if current_user else "Gość" }}
+                {% if current_user %}
+                &nbsp;|&nbsp;<a href="/ui/logout">Wyloguj</a>
+                {% endif %}
             </div>
         </div>
     </header>

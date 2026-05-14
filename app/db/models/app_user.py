@@ -22,6 +22,7 @@ class AppUser(Base):
     )
     is_active: Mapped[bool] = mapped_column(nullable=False, server_default="1")
     is_locked: Mapped[bool] = mapped_column(nullable=False, server_default="0")
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

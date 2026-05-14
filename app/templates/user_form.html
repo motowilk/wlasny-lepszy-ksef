@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>{{ "Nowy użytkownik" if mode == "create" else "Edytuj: " ~ user.username }}</h1>
+
+{% if error %}
+<div class="alert-error" style="background:#fdd;border:1px solid #c00;padding:.75rem 1rem;margin-bottom:1rem;border-radius:4px;color:#900">
+    {{ error }}
+</div>
+{% endif %}
+
+<form method="post" style="max-width:600px">
+    {% if mode == "create" %}
+    <div class="form-group" style="margin-bottom:1rem">
+        <label for="username"><strong>Login</strong></label>
+        <input id="username" type="text" name="username" required
+               style="display:block;width:100%;padding:.5rem;margin-top:.25rem;box-sizing:border-box">
+    </div>
+    {% endif %}
+
+    <div class="form-group" style="margin-bottom:1rem">
+        <label for="display_name"><strong>Nazwa wyświetlana</strong></label>
+        <input id="display_name" type="text" name="display_name"
+               value="{{ user.display_name if user else '' }}" required
+               style="display:block;width:100%;padding:.5rem;margin-top:.25rem;box-sizing:border-box">
+    </div>
+
+    <div class="form-group" style="margin-bottom:1rem">
+        <label for="email"><strong>Email</strong></label>
+        <input id="email" type="email" name="email"
+               value="{{ user.email if user else '' }}"
+               style="display:block;width:100%;padding:.5rem;margin-top:.25rem;box-sizing:border-box">
+    </div>
+
+    <div class="form-group" style="margin-bottom:1rem">
+        <label for="password">
+            <strong>Hasło{% if mode == "edit" %} <small style="font-weight:normal">(puste = bez zmian)</small>{% endif %}</strong>
+        </label>
+        <input id="password" type="password" name="password"
+               {% if mode == "create" %}required minlength="10"{% endif %}
+               style="display:block;width:100%;padding:.5rem;margin-top:.25rem;box-sizing:border-box">
+    </div>
+
+    <div style="display:flex;gap:2rem;margin-bottom:1rem">
+        <label>
+            <input type="checkbox" name="is_active" value="1"
+                   {{ "checked" if (user and user.is_active) or mode == "create" }}>
+            Aktywny
+        </label>
+        <label>
+            <input type="checkbox" name="is_locked" value="1"
+                   {{ "checked" if user and user.is_locked }}>
+            Zablokowany
+        </label>
+    </div>
+
+    <fieldset style="margin-bottom:1rem;padding:.75rem;border:1px solid #ccc;border-radius:4px">
+        <legend><strong>Role</strong></legend>
+        {% for role in all_roles %}
+        <label style="display:block;margin:.25rem 0">
+            <input type="checkbox" name="role_codes" value="{{ role.role_code }}"
+                   {{ "checked" if role.role_code in user_role_codes }}>
+            <strong>{{ role.role_code }}</strong>
+            {% if role.role_name %} — {{ role.role_name }}{% endif %}
+        </label>
+        {% endfor %}
+    </fieldset>
+
+    {% if mode == "create" %}
+    <div style="margin-bottom:1.25rem">
+        <label>
+            <input type="checkbox" name="enable_2fa" value="1">
+            Włącz weryfikację dwuskładnikową (TOTP) — po zapisaniu zostanie wyświetlony kod QR
+        </label>
+    </div>
+    {% endif %}
+
+    <div style="display:flex;gap:1rem;align-items:center">
+        <button type="submit" class="btn">{{ "Utwórz użytkownika" if mode == "create" else "Zapisz zmiany" }}</button>
+        <a href="/ui/users">Anuluj</a>
+    </div>
+</form>
+
+{% if mode == "edit" %}
+<hr style="margin:2rem 0">
+<h3>Weryfikacja dwuskładnikowa (TOTP)</h3>
+{% if user.totp_secret %}
+<p>2FA jest <strong>włączone</strong>.</p>
+<div style="display:flex;gap:1rem;flex-wrap:wrap">
+    <form method="post" action="/ui/users/{{ user.id }}/totp-reset">
+        <button type="submit" class="btn">Wygeneruj nowy kod QR</button>
+    </form>
+    <form method="post" action="/ui/users/{{ user.id }}/totp-disable"
+          onsubmit="return confirm('Wyłączyć 2FA dla tego użytkownika?')">
+        <button type="submit" class="btn">Wyłącz 2FA</button>
+    </form>
+</div>
+{% else %}
+<p>2FA jest <strong>wyłączone</strong>.</p>
+<form method="post" action="/ui/users/{{ user.id }}/totp-reset">
+    <button type="submit" class="btn">Włącz 2FA (wygeneruj kod QR)</button>
+</form>
+{% endif %}
+{% endif %}
+{% endblock %}

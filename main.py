@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes.accounting import router as accounting_router
@@ -13,7 +13,7 @@ from app.api.routes.purchase_invoices import router as purchase_invoices_router
 from app.api.routes.users import router as users_router
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.ui.routes import router as ui_router
+from app.ui.routes import UIAuthRequired, router as ui_router
 
 configure_logging()
 
@@ -40,6 +40,11 @@ app.include_router(accounting_router)
 app.include_router(notifications_router)
 app.include_router(agent_router)
 app.include_router(ui_router)
+
+
+@app.exception_handler(UIAuthRequired)
+async def ui_auth_required_handler(request: Request, exc: UIAuthRequired) -> RedirectResponse:
+    return RedirectResponse(url="/ui/login", status_code=302)
 
 
 @app.get("/health", tags=["system"])
