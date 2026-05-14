@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Nowy draft faktury</h1>
+
+<form method="post" action="/ui/invoices/new" class="form-grid">
+    <label>
+        Numer faktury
+        <input type="text" name="invoice_number" required>
+    </label>
+
+    <label>
+        Data wystawienia
+        <input type="date" name="issue_date" required>
+    </label>
+
+    <label>
+        Sprzedawca
+        <input type="text" name="seller_name" required>
+    </label>
+
+    <label>
+        Nabywca
+        <input type="text" name="buyer_name" required>
+    </label>
+
+    <label>
+        Nazwa produktu/usługi
+        <input type="text" name="product_name" required>
+    </label>
+
+    <label>
+        Ilość
+        <input type="number" step="0.000001" name="quantity" value="1" required>
+    </label>
+
+    <label>
+        Cena netto
+        <input type="number" step="0.000001" name="unit_price_net" required>
+    </label>
+
+    <label>
+        VAT %
+        <input type="number" step="0.01" name="vat_rate" value="23" required>
+    </label>
+
+    <div class="form-actions">
+        <button type="submit" class="btn">Zapisz draft</button>
+        <a class="btn secondary" href="/ui/invoices">Anuluj</a>
+    </div>
+</form>
+{% endblock %}

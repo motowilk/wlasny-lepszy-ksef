@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title or "KSeF ERP App" }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="/static/styles.css" rel="stylesheet">
+</head>
+<body>
+    <header class="topbar">
+        <div class="container topbar-inner">
+            <a href="/ui" class="brand">KSeF ERP App</a>
+
+            <nav class="nav">
+                <a href="/ui">Dashboard</a>
+                <a href="/ui/invoices">Sprzedażowe</a>
+                <a href="/ui/purchase-invoices">Zakupowe</a>
+                <a href="/ui/accounting-batches">Batche</a>
+                <a href="/ui/notifications">Notyfikacje</a>
+                <a href="/docs">API Docs</a>
+            </nav>
+
+            <div class="user-box">
+                {{ current_user.display_name if current_user else "Gość" }}
+            </div>
+        </div>
+    </header>
+
+    <main class="container page-content">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

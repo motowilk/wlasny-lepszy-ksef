@@ -1,0 +1,106 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Faktura {{ invoice.invoice_number }}</h1>
+    <div>
+        <a class="btn secondary" href="/ui/invoices">Powrót</a>
+        {% if not invoice.approved_at %}
+        <form method="post" action="/ui/invoices/{{ invoice.id }}/approve" class="inline-form">
+            <button class="btn" type="submit">Akceptuj</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="grid-two">
+    <section class="card">
+        <h2>Nagłówek</h2>
+        <p><strong>ID:</strong> {{ invoice.id }}</p>
+        <p><strong>Numer:</strong> {{ invoice.invoice_number }}</p>
+        <p><strong>KSeF:</strong> {{ invoice.ksef_number or "-" }}</p>
+        <p><strong>Data wystawienia:</strong> {{ invoice.issue_date }}</p>
+        <p><strong>Status KSeF:</strong> {{ invoice.ksef_status_code }}</p>
+        <p><strong>Status ERP:</strong> {{ invoice.erp_status }}</p>
+        <p><strong>Netto:</strong> {{ invoice.net_total }}</p>
+        <p><strong>VAT:</strong> {{ invoice.vat_total }}</p>
+        <p><strong>Brutto:</strong> {{ invoice.gross_total }}</p>
+    </section>
+
+    <section class="card">
+        <h2>Strony</h2>
+        <div role="list">
+            {% for p in invoice.parties %}
+            <div role="listitem">{{ p.role_code }} — {{ p.party.name_full if p.party else "-" }}</div>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+
+<section class="card">
+    <h2>Pozycje</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Lp.</th>
+                <th>Nazwa</th>
+                <th>Ilość</th>
+                <th>Cena netto</th>
+                <th>VAT %</th>
+                <th>Netto</th>
+                <th>Brutto</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for line in invoice.lines %}
+            <tr>
+                <td>{{ line.line_no }}</td>
+                <td>{{ line.product_name }}</td>
+                <td>{{ line.quantity }}</td>
+                <td>{{ line.unit_price_net }}</td>
+                <td>{{ line.vat_rate }}</td>
+                <td>{{ line.net_amount }}</td>
+                <td>{{ line.gross_amount }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="card">
+    <h2>Eventy</h2>
+    <div class="timeline" role="list">
+        {% for event in invoice.events %}
+        <div role="listitem">
+            <strong>{{ event.event_type }}</strong>
+            <span> — {{ event.event_status }}</span>
+            <div>{{ event.message or "-" }}</div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="card">
+    <h2>Payloady</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Typ</th>
+                <th>Format</th>
+                <th>Hash</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for payload in invoice.payloads %}
+            <tr>
+                <td>{{ payload.id }}</td>
+                <td>{{ payload.payload_type_code }}</td>
+                <td>{{ payload.content_format }}</td>
+                <td>{{ payload.content_sha256 or "-" }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

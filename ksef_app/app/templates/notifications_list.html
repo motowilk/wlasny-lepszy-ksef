@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Notyfikacje</h1>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>UUID</th>
+            <th>Kanał</th>
+            <th>Odbiorca</th>
+            <th>Status</th>
+            <th>Wysłano</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for item in items %}
+        <tr>
+            <td>{{ item.id }}</td>
+            <td>{{ item.notification_uuid }}</td>
+            <td>{{ item.channel }}</td>
+            <td>{{ item.recipient }}</td>
+            <td>{{ item.status }}</td>
+            <td>{{ item.sent_at or "-" }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

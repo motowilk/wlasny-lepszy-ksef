@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="stats-grid">
+    <div class="card stat">
+        <strong>{{ stats.total_invoices }}</strong>
+        <span>Wszystkie faktury</span>
+    </div>
+    <div class="card stat">
+        <strong>{{ stats.sale_invoices }}</strong>
+        <span>Sprzedażowe</span>
+    </div>
+    <div class="card stat">
+        <strong>{{ stats.purchase_invoices }}</strong>
+        <span>Zakupowe</span>
+    </div>
+    <div class="card stat">
+        <strong>{{ stats.notifications }}</strong>
+        <span>Notyfikacje</span>
+    </div>
+    <div class="card stat">
+        <strong>{{ stats.batches }}</strong>
+        <span>Batche księgowe</span>
+    </div>
+</div>
+
+<section class="card">
+    <h2>Ostatnie faktury</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Numer</th>
+                <th>Kierunek</th>
+                <th>Status KSeF</th>
+                <th>Brutto</th>
+                <th>Akcje</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for item in latest_invoices %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.invoice_number }}</td>
+                <td>{{ item.direction_code }}</td>
+                <td>{{ item.ksef_status_code }}</td>
+                <td>{{ item.gross_total }}</td>
+                <td><a href="/ui/invoices/{{ item.id }}">Szczegóły</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

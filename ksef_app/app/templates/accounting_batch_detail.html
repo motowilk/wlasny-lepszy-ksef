@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Batch {{ batch.batch_code }}</h1>
+
+<div class="card">
+    <p><strong>Status:</strong> {{ batch.status }}</p>
+    <p><strong>Typ:</strong> {{ batch.batch_type }}</p>
+    <p><strong>Okres:</strong> {{ batch.period_year }}-{{ "%02d" | format(batch.period_month) }}</p>
+    <p><strong>Liczba pozycji:</strong> {{ batch.item_count }}</p>
+</div>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Invoice ID</th>
+            <th>Status</th>
+            <th>Powód</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for item in items %}
+        <tr>
+            <td>{{ item.id }}</td>
+            <td>{{ item.invoice_id }}</td>
+            <td>{{ item.inclusion_status }}</td>
+            <td>{{ item.inclusion_reason or "-" }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

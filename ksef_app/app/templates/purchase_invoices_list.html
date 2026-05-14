@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h1>Faktury zakupowe</h1>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Numer</th>
+            <th>Status księgowy</th>
+            <th>Kwalifikacja</th>
+            <th>Brutto</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for item in items %}
+        <tr>
+            <td>{{ item.id }}</td>
+            <td>{{ item.invoice_number }}</td>
+            <td>{{ item.accounting_status or "-" }}</td>
+            <td>{{ item.accounting_qualified }}</td>
+            <td>{{ item.gross_total }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
