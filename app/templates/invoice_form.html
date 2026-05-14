@@ -2,7 +2,6 @@
 
 {% block content %}
 {% set sel_currency = prefill.get('currency_code', 'PLN') %}
-{% set bvt = prefill.get('buyer_vat_type', 'NIP') %}
 
 <div class="page-header">
     <h1>Nowy draft faktury sprzedażowej</h1>
@@ -84,63 +83,35 @@
     <!-- ═══ SPRZEDAWCA ═══ -->
     <section class="card">
         <h2>Sprzedawca — Podmiot 1</h2>
-        <div class="form-grid form-grid-3">
-            <label class="span-2">
-                Pełna nazwa *
-                <input type="text" name="seller_name" value="{{ prefill.get('seller_name', '') }}" required placeholder="Nazwa sprzedawcy">
-            </label>
-            <label>
-                NIP
-                <input type="text" name="seller_nip" value="{{ prefill.get('seller_nip', '') }}" placeholder="np. 8522713795">
-            </label>
-            <label>
-                Kraj (ISO 2)
-                <input type="text" name="seller_country" value="{{ prefill.get('seller_country', 'PL') }}" maxlength="2" placeholder="PL">
-            </label>
-            <label class="span-2">
-                Adres
-                <input type="text" name="seller_address" value="{{ prefill.get('seller_address', '') }}" placeholder="ul. Łokietka 5 lok. 2, 70-254 Szczecin">
-            </label>
-        </div>
+        <label>
+            Wybierz sprzedawcę *
+            <select name="seller_party_id" required style="width:100%">
+                <option value="">— wybierz sprzedawcę —</option>
+                {% for p in parties %}
+                <option value="{{ p.id }}"
+                    {%- if prefill.get('seller_party_id') == p.id %} selected{% endif %}>
+                    {{ p.name_full }}{% if p.tax_id %} (NIP: {{ p.tax_id }}){% endif %}{% if p.city %} — {{ p.city }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </label>
     </section>
 
     <!-- ═══ NABYWCA ═══ -->
     <section class="card">
         <h2>Nabywca — Podmiot 2</h2>
-        <div class="form-grid form-grid-3">
-            <label class="span-2">
-                Pełna nazwa *
-                <input type="text" name="buyer_name" value="{{ prefill.get('buyer_name', '') }}" required placeholder="Nazwa nabywcy">
-            </label>
-            <label>
-                Kraj (ISO 2)
-                <input type="text" name="buyer_country" value="{{ prefill.get('buyer_country', '') }}" maxlength="2" placeholder="DE">
-            </label>
-            <label>
-                Typ identyfikatora VAT
-                <select name="buyer_vat_type" id="buyer_vat_type" onchange="toggleBuyerVat()">
-                    <option value="NIP"{{ ' selected' if bvt == 'NIP' }}>NIP (krajowy)</option>
-                    <option value="EU"{{ ' selected' if bvt == 'EU' }}>NIP UE (zagraniczny)</option>
-                    <option value="NONE"{{ ' selected' if bvt == 'NONE' }}>Brak / osoba fizyczna</option>
-                </select>
-            </label>
-            <label id="buyer_nip_label">
-                NIP nabywcy
-                <input type="text" name="buyer_nip" value="{{ prefill.get('buyer_nip', '') }}" placeholder="np. 1234567890">
-            </label>
-            <label id="buyer_eu_prefix_label" style="display:none">
-                Prefiks UE (kraj)
-                <input type="text" name="buyer_eu_prefix" value="{{ prefill.get('buyer_eu_prefix', '') }}" maxlength="2" placeholder="DE">
-            </label>
-            <label id="buyer_eu_vat_label" style="display:none">
-                NrVatUE
-                <input type="text" name="buyer_eu_vat" value="{{ prefill.get('buyer_eu_vat', '') }}" placeholder="np. 812871896">
-            </label>
-            <label class="span-2">
-                Adres
-                <input type="text" name="buyer_address" value="{{ prefill.get('buyer_address', '') }}" placeholder="Glücksteinallee 67, 68163 Mannheim, Deutschland">
-            </label>
-        </div>
+        <label>
+            Wybierz nabywcę *
+            <select name="buyer_party_id" required style="width:100%">
+                <option value="">— wybierz nabywcę —</option>
+                {% for p in parties %}
+                <option value="{{ p.id }}"
+                    {%- if prefill.get('buyer_party_id') == p.id %} selected{% endif %}>
+                    {{ p.name_full }}{% if p.tax_id %} (NIP: {{ p.tax_id }}){% elif p.vat_eu_id %} ({{ p.vat_eu_id }}){% endif %}{% if p.city %} — {{ p.city }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </label>
     </section>
 
     <!-- ═══ POZYCJE ═══ -->
@@ -199,6 +170,8 @@
     </div>
 
 </form>
+
+<script type="application/json" id="prefilled-lines-data">{{ prefill.get('lines', [])|tojson }}</script>
 
 <script>
 var VAT_OPTIONS = [
@@ -260,18 +233,10 @@ function toggleExchangeRate() {
     document.getElementById('exchange_rate_label').style.display = (cur !== 'PLN') ? '' : 'none';
 }
 
-function toggleBuyerVat() {
-    var t = document.getElementById('buyer_vat_type').value;
-    document.getElementById('buyer_nip_label').style.display        = (t === 'NIP')  ? '' : 'none';
-    document.getElementById('buyer_eu_prefix_label').style.display  = (t === 'EU')   ? '' : 'none';
-    document.getElementById('buyer_eu_vat_label').style.display     = (t === 'EU')   ? '' : 'none';
-}
-
-var PREFILLED_LINES = {{ prefill.get('lines', [])|tojson }};
+var PREFILLED_LINES = JSON.parse(document.getElementById('prefilled-lines-data').textContent);
 
 (function init() {
     toggleExchangeRate();
-    toggleBuyerVat();
     if (PREFILLED_LINES.length > 0) {
         PREFILLED_LINES.forEach(function(l) {
             addLine(l.description, l.unit, l.qty, l.price, l.vat_code, l.exchange_rate);

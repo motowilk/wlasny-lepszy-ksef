@@ -1,0 +1,132 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ "Nowy kontrahent" if mode == "create" else "Edytuj: " ~ party.name_full }}</h1>
+    <a class="btn secondary" href="/ui/parties">Anuluj</a>
+</div>
+
+{% if saved %}
+<div class="alert alert-success" role="alert" style="margin-bottom:1rem">Zapisano zmiany.</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-error" role="alert" style="margin-bottom:1rem">{{ error }}</div>
+{% endif %}
+
+{% set v = party if mode == "edit" else prefill %}
+
+<form method="post">
+    <!-- ═══ PODSTAWOWE DANE ═══ -->
+    <section class="card">
+        <h2>Dane podstawowe</h2>
+        <div class="form-grid form-grid-3">
+            <label class="span-2">
+                Pełna nazwa *
+                <input type="text" name="name_full" value="{{ v.name_full if v else '' }}" required placeholder="np. Maennerhosen AG">
+            </label>
+            <label>
+                Nazwa skrócona
+                <input type="text" name="name_short" value="{{ v.name_short if v else '' }}" placeholder="np. Maennerhosen">
+            </label>
+            <label>
+                Typ kontrahenta
+                <select name="party_type">
+                    <option value="">— dowolny —</option>
+                    {% for t in ['COMPANY', 'INDIVIDUAL', 'GOVERNMENT', 'OTHER'] %}
+                    <option value="{{ t }}"{{ ' selected' if (v and v.party_type == t) }}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                <span style="display:flex;align-items:center;gap:.5rem">
+                    Aktywny
+                    <input type="checkbox" name="is_active" value="1"
+                        {{ 'checked' if (mode == 'create') or (v and v.is_active) }}>
+                </span>
+            </label>
+        </div>
+    </section>
+
+    <!-- ═══ IDENTYFIKATORY PODATKOWE ═══ -->
+    <section class="card">
+        <h2>Identyfikatory podatkowe</h2>
+        <div class="form-grid form-grid-3">
+            <label>
+                NIP (krajowy)
+                <input type="text" name="tax_id" value="{{ v.tax_id if v else '' }}" placeholder="np. 8522713795">
+            </label>
+            <label>
+                NIP UE / VAT EU
+                <input type="text" name="vat_eu_id" value="{{ v.vat_eu_id if v else '' }}" placeholder="np. DE321312312">
+            </label>
+            <label>
+                REGON
+                <input type="text" name="regon" value="{{ v.regon if v else '' }}" placeholder="np. 123456789">
+            </label>
+            <label>
+                KRS
+                <input type="text" name="krs" value="{{ v.krs if v else '' }}" placeholder="np. 0000123456">
+            </label>
+        </div>
+    </section>
+
+    <!-- ═══ ADRES ═══ -->
+    <section class="card">
+        <h2>Adres</h2>
+        <div class="form-grid form-grid-3">
+            <label>
+                Kraj (ISO 2) *
+                <input type="text" name="country_code" value="{{ v.country_code if v else 'PL' }}" maxlength="2" placeholder="PL" required>
+            </label>
+            <label class="span-2">
+                Ulica
+                <input type="text" name="street" value="{{ v.street if v else '' }}" placeholder="np. ul. Prosta">
+            </label>
+            <label>
+                Nr budynku
+                <input type="text" name="building_no" value="{{ v.building_no if v else '' }}" placeholder="np. 1">
+            </label>
+            <label>
+                Nr lokalu
+                <input type="text" name="apartment_no" value="{{ v.apartment_no if v else '' }}" placeholder="np. 3">
+            </label>
+            <label>
+                Kod pocztowy
+                <input type="text" name="postal_code" value="{{ v.postal_code if v else '' }}" placeholder="np. 01-001">
+            </label>
+            <label class="span-2">
+                Miasto
+                <input type="text" name="city" value="{{ v.city if v else '' }}" placeholder="np. Warszawa">
+            </label>
+            <label>
+                Województwo / Region
+                <input type="text" name="province" value="{{ v.province if v else '' }}" placeholder="np. Mazowieckie">
+            </label>
+        </div>
+    </section>
+
+    <!-- ═══ KONTAKT I PŁATNOŚCI ═══ -->
+    <section class="card">
+        <h2>Kontakt i płatności</h2>
+        <div class="form-grid form-grid-3">
+            <label>
+                E-mail
+                <input type="email" name="email" value="{{ v.email if v else '' }}" placeholder="np. biuro@firma.pl">
+            </label>
+            <label>
+                Telefon
+                <input type="text" name="phone" value="{{ v.phone if v else '' }}" placeholder="np. +48 22 123 45 67">
+            </label>
+            <label class="span-3">
+                Nr rachunku bankowego (IBAN)
+                <input type="text" name="bank_account" value="{{ v.bank_account if v else '' }}" placeholder="np. PL03 1020 4870 0000 5002 0098 5796">
+            </label>
+        </div>
+    </section>
+
+    <div class="form-actions" style="margin-bottom:40px">
+        <button type="submit" class="btn">{{ "Utwórz kontrahenta" if mode == "create" else "Zapisz zmiany" }}</button>
+        <a class="btn secondary" href="/ui/parties">Anuluj</a>
+    </div>
+</form>
+{% endblock %}

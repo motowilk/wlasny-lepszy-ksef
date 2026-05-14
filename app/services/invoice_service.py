@@ -610,12 +610,11 @@ class InvoiceService:
         di1 = _sub(p1, "DaneIdentyfikacyjne")
         _sub(di1, "NIP", (seller.tax_id or "") if seller else "")
         _sub(di1, "Nazwa", (seller.name_full or "") if seller else "")
+        addr_l1 = _build_addr_l1(seller) if seller else ""
         adres1 = _sub(p1, "Adres")
         _sub(adres1, "KodKraju",
              (seller.country_code or "PL") if seller else "PL")
-        addr_l1 = _build_addr_l1(seller) if seller else ""
-        if addr_l1:
-            _sub(adres1, "AdresL1", addr_l1)
+        _sub(adres1, "AdresL1", addr_l1 or (seller.name_full if seller else ""))
 
         # ── Podmiot2 (buyer) ──────────────────────────────────────────────────
         buyer_link = next((p for p in invoice.parties if p.role_code == "BUYER"), None)
@@ -687,9 +686,13 @@ class InvoiceService:
         _sub(adn, "P_17", "2")   # no cash-accounting method
         _sub(adn, "P_18", "2")   # no split payment
         _sub(adn, "P_18A", "2")  # no mandatory split payment
-        # Zwolnienie: P_19=1 if zw lines present, else P_19N=1
+        # Zwolnienie: P_19=1 + P_19A (legal basis) if zw lines, else P_19N=1
         zwol = _sub(adn, "Zwolnienie")
-        _sub(zwol, "P_19" if has_zw else "P_19N", "1")
+        if has_zw:
+            _sub(zwol, "P_19", "1")
+            _sub(zwol, "P_19A", fa_meta.get("tax_exemption_basis", "art. 43 ust. 1"))
+        else:
+            _sub(zwol, "P_19N", "1")
         # NoweSrodkiTransportu: P_22N=1 (not new transport means)
         nst = _sub(adn, "NoweSrodkiTransportu")
         _sub(nst, "P_22N", "1")

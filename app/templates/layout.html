@@ -15,6 +15,7 @@
                 <a href="/ui">Dashboard</a>
                 <a href="/ui/invoices">Sprzedażowe</a>
                 <a href="/ui/purchase-invoices">Zakupowe</a>
+                <a href="/ui/parties">Kontrahenci</a>
                 <a href="/ui/accounting-batches">Batche</a>
                 <a href="/ui/notifications">Notyfikacje</a>
                 {% if current_user and (current_user.roles | selectattr('role.role_code', 'equalto', 'admin') | list) %}

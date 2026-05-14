@@ -33,6 +33,7 @@ from app.db.models import (
     Invoice,
     InvoiceParty,
     NotificationLog,
+    Party,
 )
 from app.schemas.invoice import (
     InvoiceCreateRequest,
@@ -446,6 +447,12 @@ def invoice_new_form(
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(ui_require_roles("admin", "agent", "reviewer")),
 ):
+    all_parties = list(
+        db.execute(select(Party).where(Party.is_active.is_(True)).order_by(Party.name_full))
+        .scalars()
+        .all()
+    )
+
     prefill: dict = {}
     if clone:
         src = (
@@ -482,31 +489,10 @@ def invoice_new_form(
                 party = ip.party
                 if not party:
                     continue
-                addr_parts = [p for p in [party.street, party.city, party.postal_code] if p]
-                addr_str = ", ".join(addr_parts) or (party.extra_data or {}).get("address_l1", "")
                 if ip.role_code == "SELLER":
-                    prefill.update({
-                        "seller_name": party.name_full,
-                        "seller_nip": party.tax_id or "",
-                        "seller_country": party.country_code or "PL",
-                        "seller_address": addr_str,
-                    })
+                    prefill["seller_party_id"] = party.id
                 elif ip.role_code == "BUYER":
-                    if party.vat_eu_id:
-                        prefill.update({
-                            "buyer_vat_type": "EU",
-                            "buyer_eu_prefix": party.country_code or "",
-                            "buyer_eu_vat": party.vat_eu_id,
-                        })
-                    elif party.tax_id:
-                        prefill.update({"buyer_vat_type": "NIP", "buyer_nip": party.tax_id})
-                    else:
-                        prefill["buyer_vat_type"] = "NONE"
-                    prefill.update({
-                        "buyer_name": party.name_full,
-                        "buyer_country": party.country_code or "",
-                        "buyer_address": addr_str,
-                    })
+                    prefill["buyer_party_id"] = party.id
             lines_data = []
             for line in sorted(src.lines, key=lambda l: l.line_no):
                 lm = line.line_metadata or {}
@@ -528,6 +514,7 @@ def invoice_new_form(
             "current_user": current_user,
             "mode": "create",
             "prefill": prefill,
+            "parties": all_parties,
         },
     )
 
@@ -555,18 +542,8 @@ async def invoice_create_submit(
     payment_swift = _s("payment_swift")
     payment_bank_name = _s("payment_bank_name")
 
-    seller_name = _s("seller_name")
-    seller_nip = _s("seller_nip") or None
-    seller_country = _s("seller_country", "PL") or "PL"
-    seller_address = _s("seller_address") or None
-
-    buyer_name = _s("buyer_name")
-    buyer_country = _s("buyer_country") or None
-    buyer_vat_type = _s("buyer_vat_type", "NIP")
-    buyer_nip = _s("buyer_nip") or None
-    buyer_eu_prefix = _s("buyer_eu_prefix") or None
-    buyer_eu_vat = _s("buyer_eu_vat") or None
-    buyer_address = _s("buyer_address") or None
+    seller_party_id_str = _s("seller_party_id")
+    buyer_party_id_str = _s("buyer_party_id")
 
     contract_date_str = _s("contract_date")
     contract_number = _s("contract_number")
@@ -606,28 +583,41 @@ async def invoice_create_submit(
                 )
             )
 
-        # Build parties
-        seller_party = InvoicePartyPayload(
-            role_code="SELLER",
-            sequence_no=1,
-            party=PartyPayload(
-                name_full=seller_name,
-                tax_id=seller_nip,
-                country_code=seller_country,
-                street=seller_address,
-            ),
-        )
+        # Resolve parties from DB
+        if not seller_party_id_str or not buyer_party_id_str:
+            raise ValueError("Wybierz sprzedawcę i nabywcę.")
+        seller_db = db.get(Party, int(seller_party_id_str))
+        buyer_db = db.get(Party, int(buyer_party_id_str))
+        if not seller_db or not buyer_db:
+            raise ValueError("Wybrany kontrahent nie istnieje w bazie.")
 
-        buyer_kwargs: dict = {"name_full": buyer_name, "country_code": buyer_country, "street": buyer_address}
-        if buyer_vat_type == "NIP":
-            buyer_kwargs["tax_id"] = buyer_nip
-        elif buyer_vat_type == "EU":
-            buyer_kwargs["vat_eu_id"] = buyer_eu_vat
-            buyer_kwargs["country_code"] = buyer_eu_prefix or buyer_country
+        def _party_payload(p: Party) -> PartyPayload:
+            return PartyPayload(
+                party_uuid=p.party_uuid,
+                name_full=p.name_full,
+                name_short=p.name_short,
+                tax_id=p.tax_id,
+                vat_eu_id=p.vat_eu_id,
+                regon=p.regon,
+                krs=p.krs,
+                country_code=p.country_code,
+                street=p.street,
+                building_no=p.building_no,
+                apartment_no=p.apartment_no,
+                city=p.city,
+                postal_code=p.postal_code,
+                province=p.province,
+                email=p.email,
+                phone=p.phone,
+                bank_account=p.bank_account,
+                extra_data=p.extra_data,
+            )
+
+        seller_party = InvoicePartyPayload(
+            role_code="SELLER", sequence_no=1, party=_party_payload(seller_db)
+        )
         buyer_party = InvoicePartyPayload(
-            role_code="BUYER",
-            sequence_no=1,
-            party=PartyPayload(**buyer_kwargs),
+            role_code="BUYER", sequence_no=1, party=_party_payload(buyer_db)
         )
 
         # Build fa_metadata
@@ -777,6 +767,156 @@ def invoice_validate_ksef(
             },
         },
     )
+
+
+# ── Party (kontrahent) CRUD ────────────────────────────────────────────────────
+
+@router.get("/ui/parties")
+def parties_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(get_current_ui_user),
+    success: str | None = None,
+):
+    parties = list(
+        db.execute(select(Party).order_by(Party.name_full)).scalars().all()
+    )
+    return templates.TemplateResponse(
+        "parties_list.html",
+        {"request": request, "current_user": current_user, "parties": parties, "success": success},
+    )
+
+
+@router.get("/ui/parties/new")
+def party_new_form(
+    request: Request,
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent")),
+):
+    return templates.TemplateResponse(
+        "party_form.html",
+        {"request": request, "current_user": current_user, "mode": "create", "party": None, "prefill": {}, "error": None},
+    )
+
+
+@router.post("/ui/parties/new")
+async def party_create_submit(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent")),
+):
+    form = await request.form()
+
+    def _s(key: str) -> str | None:
+        v = form.get(key)
+        return v.strip() if v and v.strip() else None
+
+    name_full = _s("name_full")
+    if not name_full:
+        return templates.TemplateResponse(
+            "party_form.html",
+            {"request": request, "current_user": current_user, "mode": "create",
+             "party": None, "prefill": dict(form), "error": "Pełna nazwa jest wymagana."},
+            status_code=422,
+        )
+
+    party = Party(
+        party_uuid=str(uuid.uuid4()),
+        name_full=name_full,
+        name_short=_s("name_short"),
+        party_type=_s("party_type"),
+        tax_id=_s("tax_id"),
+        vat_eu_id=_s("vat_eu_id"),
+        regon=_s("regon"),
+        krs=_s("krs"),
+        country_code=_s("country_code") or "PL",
+        street=_s("street"),
+        building_no=_s("building_no"),
+        apartment_no=_s("apartment_no"),
+        city=_s("city"),
+        postal_code=_s("postal_code"),
+        province=_s("province"),
+        email=_s("email"),
+        phone=_s("phone"),
+        bank_account=_s("bank_account"),
+        is_active=bool(form.get("is_active")),
+    )
+    db.add(party)
+    db.commit()
+    return RedirectResponse(url=f"/ui/parties/{party.id}/edit?success=1", status_code=303)
+
+
+@router.get("/ui/parties/{party_id}/edit")
+def party_edit_form(
+    party_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent")),
+    success: int | None = None,
+):
+    party = db.get(Party, party_id)
+    if not party:
+        raise HTTPException(status_code=404, detail="Kontrahent nie istnieje.")
+    return templates.TemplateResponse(
+        "party_form.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "mode": "edit",
+            "party": party,
+            "prefill": {},
+            "error": None,
+            "saved": bool(success),
+        },
+    )
+
+
+@router.post("/ui/parties/{party_id}/edit")
+async def party_edit_submit(
+    party_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent")),
+):
+    party = db.get(Party, party_id)
+    if not party:
+        raise HTTPException(status_code=404, detail="Kontrahent nie istnieje.")
+
+    form = await request.form()
+
+    def _s(key: str) -> str | None:
+        v = form.get(key)
+        return v.strip() if v and v.strip() else None
+
+    name_full = _s("name_full")
+    if not name_full:
+        return templates.TemplateResponse(
+            "party_form.html",
+            {"request": request, "current_user": current_user, "mode": "edit",
+             "party": party, "prefill": {}, "error": "Pełna nazwa jest wymagana."},
+            status_code=422,
+        )
+
+    party.name_full = name_full
+    party.name_short = _s("name_short")
+    party.party_type = _s("party_type")
+    party.tax_id = _s("tax_id")
+    party.vat_eu_id = _s("vat_eu_id")
+    party.regon = _s("regon")
+    party.krs = _s("krs")
+    party.country_code = _s("country_code") or "PL"
+    party.street = _s("street")
+    party.building_no = _s("building_no")
+    party.apartment_no = _s("apartment_no")
+    party.city = _s("city")
+    party.postal_code = _s("postal_code")
+    party.province = _s("province")
+    party.email = _s("email")
+    party.phone = _s("phone")
+    party.bank_account = _s("bank_account")
+    party.is_active = bool(form.get("is_active"))
+
+    db.commit()
+    return RedirectResponse(url=f"/ui/parties/{party_id}/edit?success=1", status_code=303)
 
 
 @router.get("/ui/accounting-batches")

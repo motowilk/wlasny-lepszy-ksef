@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Kontrahenci</h1>
+    <a class="btn" href="/ui/parties/new">+ Nowy kontrahent</a>
+</div>
+
+{% if success %}
+<div class="alert alert-success" role="alert" style="margin-bottom:1rem">{{ success }}</div>
+{% endif %}
+
+<section class="card" style="padding:0">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Nazwa</th>
+                <th>NIP / VAT UE</th>
+                <th>Kraj</th>
+                <th>Miasto</th>
+                <th>E-mail</th>
+                <th>Status</th>
+                <th style="width:90px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in parties %}
+            <tr>
+                <td>
+                    <strong>{{ p.name_full }}</strong>
+                    {% if p.name_short %}<br><span style="color:#888;font-size:12px">{{ p.name_short }}</span>{% endif %}
+                </td>
+                <td>
+                    {% if p.tax_id %}{{ p.tax_id }}{% elif p.vat_eu_id %}{{ p.vat_eu_id }}{% else %}<span style="color:#aaa">—</span>{% endif %}
+                </td>
+                <td>{{ p.country_code or "—" }}</td>
+                <td>{{ p.city or "—" }}</td>
+                <td>{{ p.email or "—" }}</td>
+                <td>
+                    {% if p.is_active %}
+                    <span style="color:#2d9e5a;font-weight:600">Aktywny</span>
+                    {% else %}
+                    <span style="color:#aaa">Nieaktywny</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a class="btn secondary" href="/ui/parties/{{ p.id }}/edit" style="padding:4px 10px;font-size:12px">Edytuj</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" style="text-align:center;color:#aaa;padding:2rem">Brak kontrahentów. <a href="/ui/parties/new">Dodaj pierwszego.</a></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}
