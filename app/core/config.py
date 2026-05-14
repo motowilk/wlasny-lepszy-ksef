@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     scheduler_interval: int = Field(default=10, alias="SCHEDULER_INTERVAL")
 
     admin_default_password: str = Field(default="", alias="ADMIN_DEFAULT_PASSWORD")
+    ui_session_max_age: int = Field(default=43200, alias="UI_SESSION_MAX_AGE")
 
     ksef_api_url: str = Field(
         default="https://api.ksef.mf.gov.pl/v2",

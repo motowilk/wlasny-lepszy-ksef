@@ -1,7 +1,8 @@
 import uuid
+from datetime import date
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import extract, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -13,6 +14,10 @@ from app.db.models import (
 )
 
 ALLOWED_ACCOUNTING_STATUSES = {"new", "verified", "posted", "booked", "cancelled"}
+
+
+def _purchase_batch_period_start(period_year: int, period_month: int) -> date:
+    return date(period_year, period_month, 1)
 
 
 class AccountingService:
@@ -140,6 +145,8 @@ class AccountingService:
         criteria_json: dict | None = None,
     ) -> AccountingBatch:
         try:
+            _purchase_batch_period_start(period_year, period_month)
+
             batch = AccountingBatch(
                 batch_uuid=str(uuid.uuid4()),
                 batch_code=(
@@ -163,6 +170,8 @@ class AccountingService:
                     Invoice.direction_code == "PURCHASE",
                     Invoice.accounting_qualified.is_(True),
                     Invoice.accounting_batch_id.is_(None),
+                    extract("year", Invoice.issue_date) == period_year,
+                    extract("month", Invoice.issue_date) == period_month,
                 )
                 .with_for_update()
             )

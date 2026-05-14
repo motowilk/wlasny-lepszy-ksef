@@ -1,4 +1,5 @@
 import io
+import secrets
 import uuid
 from datetime import datetime, timezone
 from decimal import InvalidOperation
@@ -42,8 +43,50 @@ from app.schemas.invoice import (
 from app.services.invoice_service import InvoiceService
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
+_UI_SESSION_NONCE_KEY = "ui_session_nonce"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 router = APIRouter(tags=["ui"])
+
+
+def _use_secure_cookies() -> bool:
+    return settings.base_url.startswith("https://")
+
+
+def _get_user_session_nonce(user: AppUser) -> str | None:
+    metadata = user.metadata_json or {}
+    session_nonce = metadata.get(_UI_SESSION_NONCE_KEY)
+    return session_nonce if isinstance(session_nonce, str) and session_nonce else None
+
+
+def _rotate_user_session_nonce(user: AppUser) -> str:
+    metadata = dict(user.metadata_json or {})
+    metadata[_UI_SESSION_NONCE_KEY] = secrets.token_urlsafe(24)
+    user.metadata_json = metadata
+    return metadata[_UI_SESSION_NONCE_KEY]
+
+
+def _resolve_ui_user(db: Session, session_token: str | None) -> AppUser:
+    if not session_token:
+        raise UIAuthRequired()
+
+    token_data = decode_ui_session_token(session_token, settings.secret_key)
+    if token_data is None:
+        raise UIAuthRequired()
+
+    stmt = (
+        select(AppUser)
+        .where(AppUser.id == int(token_data["user_id"]))
+        .options(joinedload(AppUser.roles).joinedload(AppUserRole.role))
+    )
+    user = db.execute(stmt).unique().scalar_one_or_none()
+    if not user or not user.is_active or user.is_locked:
+        raise UIAuthRequired()
+
+    session_nonce = _get_user_session_nonce(user)
+    if session_nonce != token_data["session_nonce"]:
+        raise UIAuthRequired()
+
+    return user
 
 
 @router.get("/ui/api/worker-status")
@@ -59,12 +102,9 @@ def ui_worker_status(
     from fastapi.responses import JSONResponse
     from app.db.models.worker_heartbeat import WorkerHeartbeat
 
-    user_id = (
-        decode_ui_session_token(session_token, settings.secret_key)
-        if session_token
-        else None
-    )
-    if user_id is None:
+    try:
+        _resolve_ui_user(db, session_token)
+    except UIAuthRequired:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
     IDLE_WARN_SECONDS = 180   # 3 minutes – worker is idle but still checked in recently
@@ -134,20 +174,7 @@ def get_current_ui_user(
     db: Session = Depends(get_db),
     session_token: str | None = Cookie(default=None, alias="session"),
 ) -> AppUser:
-    if not session_token:
-        raise UIAuthRequired()
-    user_id = decode_ui_session_token(session_token, settings.secret_key)
-    if user_id is None:
-        raise UIAuthRequired()
-    stmt = (
-        select(AppUser)
-        .where(AppUser.id == user_id)
-        .options(joinedload(AppUser.roles).joinedload(AppUserRole.role))
-    )
-    user = db.execute(stmt).unique().scalar_one_or_none()
-    if not user or not user.is_active or user.is_locked:
-        raise UIAuthRequired()
-    return user
+    return _resolve_ui_user(db, session_token)
 
 
 def ui_require_roles(*role_codes: str):
@@ -204,15 +231,30 @@ def login_submit(
     if user.totp_secret:
         pending = create_totp_pending_token(user.id, settings.secret_key)
         resp = RedirectResponse(url="/ui/login/totp", status_code=303)
-        resp.set_cookie("totp_pending", pending, httponly=True, samesite="lax", max_age=300)
+        resp.set_cookie(
+            "totp_pending",
+            pending,
+            httponly=True,
+            samesite="lax",
+            secure=_use_secure_cookies(),
+            max_age=300,
+        )
         return resp
 
     user.last_login_at = datetime.now(tz=timezone.utc)
+    session_nonce = _rotate_user_session_nonce(user)
     db.commit()
 
-    token = create_ui_session_token(user.id, settings.secret_key)
+    token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
     resp = RedirectResponse(url="/ui", status_code=303)
-    resp.set_cookie("session", token, httponly=True, samesite="lax")
+    resp.set_cookie(
+        "session",
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=_use_secure_cookies(),
+        max_age=settings.ui_session_max_age,
+    )
     return resp
 
 
@@ -254,19 +296,39 @@ def totp_submit(
         return resp
 
     user.last_login_at = datetime.now(tz=timezone.utc)
+    session_nonce = _rotate_user_session_nonce(user)
     db.commit()
 
-    session_token = create_ui_session_token(user.id, settings.secret_key)
+    session_token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
     resp = RedirectResponse(url="/ui", status_code=303)
-    resp.set_cookie("session", session_token, httponly=True, samesite="lax")
+    resp.set_cookie(
+        "session",
+        session_token,
+        httponly=True,
+        samesite="lax",
+        secure=_use_secure_cookies(),
+        max_age=settings.ui_session_max_age,
+    )
     resp.delete_cookie("totp_pending")
     return resp
 
 
 @router.get("/ui/logout")
-def logout():
+def logout(
+    db: Session = Depends(get_db),
+    session_token: str | None = Cookie(default=None, alias="session"),
+):
+    try:
+        user = _resolve_ui_user(db, session_token)
+    except UIAuthRequired:
+        user = None
+
+    if user is not None:
+        _rotate_user_session_nonce(user)
+        db.commit()
+
     resp = RedirectResponse(url="/ui/login", status_code=302)
-    resp.delete_cookie("session")
+    resp.delete_cookie("session", secure=_use_secure_cookies())
     return resp
 
 

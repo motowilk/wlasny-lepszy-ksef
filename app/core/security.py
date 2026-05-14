@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac as _hmac
+import json
 import time
 
 from passlib.context import CryptContext
@@ -9,6 +10,7 @@ from passlib.context import CryptContext
 # bcrypt is kept as deprecated so that existing hashes created with plain bcrypt can still
 # be verified; passlib will flag them for rehashing on next login.
 pwd_context = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated=["bcrypt"])
+UI_SESSION_MAX_AGE = 12 * 60 * 60
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
@@ -25,22 +27,53 @@ def normalize_username(username: str | None) -> str | None:
     return username.strip().lower()
 
 
-def create_ui_session_token(user_id: int, secret: str) -> str:
-    payload = str(user_id)
+def create_ui_session_token(
+    user_id: int,
+    secret: str,
+    session_nonce: str,
+    max_age: int = UI_SESSION_MAX_AGE,
+) -> str:
+    issued_at = int(time.time())
+    payload = json.dumps(
+        {
+            "user_id": user_id,
+            "issued_at": issued_at,
+            "expires_at": issued_at + max_age,
+            "session_nonce": session_nonce,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    )
     sig = _hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
     return base64.urlsafe_b64encode(f"{payload}.{sig}".encode()).decode()
 
 
-def decode_ui_session_token(token: str, secret: str) -> int | None:
-    """Verify the HMAC signature and return the user_id, or None if invalid."""
+def decode_ui_session_token(token: str, secret: str) -> dict[str, int | str] | None:
+    """Verify the signed payload and return the decoded session data."""
     try:
-        # Re-add stripped base64 padding if necessary.
         padded = token + "=" * (-len(token) % 4)
         raw = base64.urlsafe_b64decode(padded.encode()).decode()
-        payload, sig = raw.split(".", 1)
+        payload, sig = raw.rsplit(".", 1)
         expected = _hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        if _hmac.compare_digest(sig, expected):
-            return int(payload)
+        if not _hmac.compare_digest(sig, expected):
+            return None
+
+        data = json.loads(payload)
+        user_id = int(data["user_id"])
+        issued_at = int(data["issued_at"])
+        expires_at = int(data["expires_at"])
+        session_nonce = str(data["session_nonce"])
+
+        now = int(time.time())
+        if expires_at < now or issued_at > expires_at or not session_nonce:
+            return None
+
+        return {
+            "user_id": user_id,
+            "issued_at": issued_at,
+            "expires_at": expires_at,
+            "session_nonce": session_nonce,
+        }
     except Exception:
         return None
     return None

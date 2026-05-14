@@ -1,5 +1,4 @@
 from collections.abc import Callable
-from datetime import datetime, timezone
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -53,9 +52,6 @@ def get_current_user(
             detail="Nieprawidłowy login lub hasło.",
             headers={"WWW-Authenticate": "Basic"},
         )
-
-    user.last_login_at = datetime.now(tz=timezone.utc)
-    db.commit()
 
     return user
 
