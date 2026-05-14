@@ -163,7 +163,13 @@ class RealKsefClient(BaseKsefClient):
         )
         self._access_token = redeem_resp["accessToken"]["token"]
         valid_until_str = redeem_resp["accessToken"]["validUntil"]
-        self._token_valid_until = datetime.fromisoformat(valid_until_str)
+        # Normalise to an aware datetime regardless of whether the API returns
+        # a timezone offset or a bare ISO string.  Without this, comparing a
+        # naive datetime with timezone.utc-aware `now` raises TypeError.
+        raw_dt = datetime.fromisoformat(valid_until_str.replace("Z", "+00:00"))
+        self._token_valid_until = (
+            raw_dt if raw_dt.tzinfo is not None else raw_dt.replace(tzinfo=timezone.utc)
+        )
 
     # ------------------------------------------------------------------ #
     # Session management                                                    #

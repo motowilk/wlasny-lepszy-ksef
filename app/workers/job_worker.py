@@ -127,6 +127,13 @@ class JobWorker:
             logger.exception("Job processing failed: %s", exc)
             if job is not None:
                 try:
+                    # Roll back any failed/dirty transaction before attempting to
+                    # persist the error state.  Without this, a DB-level error
+                    # (e.g. constraint violation in flush) leaves the session in
+                    # an invalid state and the subsequent commit in _fail_job /
+                    # _reschedule_job raises InvalidRequestError, leaving the
+                    # job permanently stuck in PROCESSING.
+                    db.rollback()
                     if job.attempts >= job.max_attempts:
                         self._fail_job(db, job, exc)
                     else:

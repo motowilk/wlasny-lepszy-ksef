@@ -44,7 +44,7 @@ Ten krok instaluje wszystkie biblioteki wymagane przez aplikację, między innym
 Windows i macOS:
 
 ```bash
-python -m pip install --upgrade pip
+python3 -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
@@ -509,7 +509,7 @@ ADMIN_DEFAULT_PASSWORD=<haslo_dla_uzytkownika_admin>
 Losowy klucz do `SECRET_KEY` możesz wygenerować tak:
 
 ```bash
-python -c "import secrets; print(secrets.token_hex(32))"
+python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
 ## Aktualna funkcjonalność aplikacji
@@ -821,7 +821,7 @@ Migracje tworzą lub rozszerzają następujące komponenty bazy:
 Dla pustej bazy utwórz schemat bezpośrednio ze skryptu inicjalizacyjnego, który odczytuje modele SQLAlchemy:
 
 ```bash
-python scripts/create_tables.py
+python3 scripts/create_tables.py
 ```
 
 Następnie oznacz wszystkie migracje jako zastosowane (nie uruchamiaj ich — tabele już istnieją):
@@ -854,7 +854,7 @@ Ten krok wypełnia bazę danymi referencyjnymi, z których aplikacja korzysta od
 Skrypt nie powinien duplikować istniejących wpisów, więc można go uruchomić bezpiecznie także wtedy, gdy część danych została już wcześniej dodana.
 
 ```bash
-python scripts/seed_reference_data.py
+python3 scripts/seed_reference_data.py
 ```
 
 ## Krok 9. Utwórz konto administratora
@@ -871,7 +871,7 @@ Skrypt nie nadpisuje istniejącego konta `admin`. Jeżeli taki użytkownik jest 
 Przed uruchomieniem tego kroku upewnij się, że w `.env` ustawiono `ADMIN_DEFAULT_PASSWORD`.
 
 ```bash
-python scripts/create_admin.py
+python3 scripts/create_admin.py
 ```
 
 Po wykonaniu skryptu zostanie utworzony użytkownik `admin` z hasłem z pola `ADMIN_DEFAULT_PASSWORD`.
@@ -901,7 +901,7 @@ Worker kolejek:
 Ten proces działa w pętli i pobiera z bazy kolejne zadania integracyjne ze statusem `NEW`. Obsługuje między innymi wysyłkę do KSeF, odpytywanie o status KSeF oraz wysyłkę powiadomień.
 
 ```bash
-python -m app.workers.job_worker
+python3 -m app.workers.job_worker
 ```
 
 Scheduler:
@@ -909,15 +909,61 @@ Scheduler:
 Ten proces uruchamia harmonogram APScheduler, który cyklicznie wywołuje przetwarzanie kolejki zadań. To alternatywa dla ciągle działającego workera, gdy chcesz uruchamiać obsługę zadań w interwale czasowym.
 
 ```bash
-python -m app.workers.scheduler
+python3 -m app.workers.scheduler
 ```
 
-## Krok 13. Uruchom testy
+## Krok 13. Przełącz na tryb live (opcjonalnie)
+
+Domyślnie aplikacja działa w trybie `mock` — faktura jest akceptowana natychmiast lokalnie, bez kontaktu z serwerami MF. Aby podłączyć rzeczywisty KSeF, wykonaj poniższe kroki.
+
+### Wymagania wstępne
+
+- Token autoryzacyjny KSeF (`ksef_token`) dla twojego NIP-u.
+- NIP podmiotu autoryzującego.
+
+### Zmiana konfiguracji `.env`
+
+Ustaw następujące wartości w pliku `.env`:
+
+```env
+KSEF_MODE=live
+
+KSEF_API_URL=https://api.ksef.mf.gov.pl/v2   # produkcja; dla środowiska testowego: https://api.test.ksef.mf.gov.pl/v2
+KSEF_TOKEN=<twój_token_ksef>
+KSEF_NIP=<nip_podmiotu>
+```
+
+> **Uwaga:** Po zmianie `KSEF_MODE` na `live` zatwierdzone faktury są wysyłane do KSeF natychmiast przez workera. Upewnij się, że token i NIP są poprawne, zanim zaakceptujesz pierwszy dokument.
+
+### Różnica w zachowaniu trybu live względem mock
+
+| Aspekt | `mock` | `live` |
+|---|---|---|
+| Wysyłka XML | pominięta | HTTP POST do KSeF API |
+| Numer KSeF | generowany lokalnie | nadawany przez MF |
+| Polling statusu | pominięty | zadanie `POLL_KSEF_STATUS` w kolejce |
+| Wymagany worker | tak | tak (polling nie działa bez workera) |
+
+### Ponowne uruchomienie procesów
+
+Po zmianie `.env` zrestartuj aplikację i workera, żeby odczytały nową konfigurację:
+
+```bash
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+```bash
+python3 -m app.workers.job_worker
+# lub
+python3 -m app.workers.scheduler
+```
+
+## Krok 14. Uruchom testy
 
 Minimalny zestaw testów regresyjnych obejmuje walidację wyliczeń faktur, logikę retry workera oraz integralność nowych constraintów modelu.
 
 ```bash
-python -m pytest tests
+python3 -m pytest tests
 ```
 
 ## Schemat bazy danych v1
@@ -991,7 +1037,7 @@ Wszystkie tabele zawierają odpowiednie klucze obce (`FOREIGN KEY`), indeksy (`K
 4. Wykonaj blok SQL tworzący bazę i użytkownika MySQL
 5. Skopiuj `.env.example` do `.env`
 6. Uzupełnij ustawienia bazy, `SECRET_KEY` i `ADMIN_DEFAULT_PASSWORD`
-7. `alembic upgrade head`
+7. **Nowa baza:** `python scripts/create_tables.py` → `alembic stamp head` / **Aktualizacja:** `alembic upgrade head`
 8. `python scripts/seed_reference_data.py`
 9. `python scripts/create_admin.py`
 10. `uvicorn main:app --reload --host 127.0.0.1 --port 8000`
