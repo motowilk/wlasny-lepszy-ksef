@@ -1,6 +1,6 @@
 # === SECRETS — never commit ===
 *.env
-.env.*
+.env
 !.env.example
 !ksef_app/.env.example
 
@@ -69,3 +69,5 @@ alembic/versions/__pycache__/
 tmp/
 temp/
 *.tmp
+
+localhost.session.sql
