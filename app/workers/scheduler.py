@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_scheduler() -> None:
-    worker = JobWorker()
+    worker = JobWorker(name="scheduler")
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         worker.process_next_job,

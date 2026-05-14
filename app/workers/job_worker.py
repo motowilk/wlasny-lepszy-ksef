@@ -3,9 +3,9 @@ import os
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
-from app.db.models import IntegrationJob
+from app.db.models import IntegrationJob, WorkerHeartbeat
 from app.db.session import SessionLocal
 from app.services.ksef_service import KsefService
 from app.services.notification_service import NotificationService
@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 class JobWorker:
-    def __init__(self) -> None:
-        self.worker_id = f"job_worker:{os.getpid()}"
+    def __init__(self, name: str = "job_worker") -> None:
+        self.worker_id = name  # stable across restarts; no PID suffix
 
     @staticmethod
     def _retry_delay(attempts: int) -> timedelta:
@@ -68,6 +68,48 @@ class JobWorker:
         self._release_job_lock(job)
         db.commit()
 
+    def _write_heartbeat(
+        self,
+        status: str,
+        job_type: str | None = None,
+        job_id: int | None = None,
+    ) -> None:
+        """Upsert a heartbeat row for this worker.  Uses its own short-lived
+        session so it never interferes with the job-processing transaction."""
+        db = SessionLocal()
+        try:
+            now = datetime.now(tz=timezone.utc)
+            heartbeat = db.execute(
+                select(WorkerHeartbeat).where(WorkerHeartbeat.worker_id == self.worker_id)
+            ).scalars().first()
+            if heartbeat:
+                heartbeat.last_heartbeat_at = now
+                heartbeat.status = status
+                heartbeat.current_job_type = job_type
+                heartbeat.current_job_id = job_id
+            else:
+                # First write of this session: purge any leftover rows that used
+                # the old "name:PID" format so they don't clutter the status UI.
+                db.execute(
+                    delete(WorkerHeartbeat).where(
+                        WorkerHeartbeat.worker_id.like(self.worker_id + ":%")
+                    )
+                )
+                db.add(
+                    WorkerHeartbeat(
+                        worker_id=self.worker_id,
+                        last_heartbeat_at=now,
+                        status=status,
+                        current_job_type=job_type,
+                        current_job_id=job_id,
+                    )
+                )
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+        finally:
+            db.close()
+
     def _reschedule_job(self, db, job: IntegrationJob, exc: Exception) -> None:
         job.status = "NEW"
         job.last_error_message = str(exc)
@@ -82,8 +124,10 @@ class JobWorker:
         try:
             job = self._claim_next_job(db)
             if not job:
+                self._write_heartbeat("IDLE")
                 return False
 
+            self._write_heartbeat("ACTIVE", job.job_type, job.id)
             logger.info("Processing job id=%s type=%s", job.id, job.job_type)
 
             if job.job_type == "SEND_TO_KSEF":
@@ -121,6 +165,7 @@ class JobWorker:
                 raise ValueError(f"Nieobsługiwany job_type={job.job_type}")
 
             logger.info("Job id=%s finished successfully", job.id)
+            self._write_heartbeat("IDLE")
             return True
 
         except Exception as exc:
@@ -140,6 +185,7 @@ class JobWorker:
                         self._reschedule_job(db, job, exc)
                 except Exception:
                     db.rollback()
+            self._write_heartbeat("IDLE")
             return False
         finally:
             db.close()
