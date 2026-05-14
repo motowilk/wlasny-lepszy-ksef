@@ -5,8 +5,11 @@ Poniżej znajduje się uproszczona instrukcja pierwszego uruchomienia projektu. 
 ## Założenia
 
 - Python 3.12 lub nowszy jest zainstalowany lokalnie.
-- MySQL 8 działa w kontenerze Docker i jest wystawiony na `localhost:3306`.
+- MySQL 8.0+ działa lokalnie (lub w kontenerze Docker) i jest dostępny na `localhost:3306` lub w innym skonfigurowanym porcie.
+  - Serwer MySQL musi być uruchomiony i dostępny z poziomu administratora (`root` lub innego użytkownika z uprawnieniami tworzenia baz i użytkowników).
+  - Serwer powinien obsługiwać kodowanie `utf8mb4` i zestaw znaków `utf8mb4_unicode_ci`.
 - Pracujesz z katalogu repozytorium, a aplikacja znajduje się w folderze `ksef_app`.
+- Git jest zainstalowany (opcjonalnie, jeśli klonujesz repozytorium).
 
 ## Krok 1. Przejdź do katalogu aplikacji
 
@@ -47,9 +50,9 @@ pip install -r requirements.txt
 
 ## Krok 4. Utwórz bazę danych i użytkownika
 
-Ten krok przygotowuje dostęp do bazy danych, z której korzysta aplikacja. Tworzysz pustą bazę `ksef_erp`, zakładasz użytkownika technicznego i nadajesz mu uprawnienia potrzebne do tworzenia tabel oraz późniejszej pracy aplikacji.
+Ten krok przygotowuje dostęp do bazy danych, z której korzysta aplikacja. Tworzysz pustą bazę `ksef_erp`, zakładasz użytkownika technicznego i nadajesz mu uprawnienia potrzebne do tworzenia tabel oraz późniejszej pracy aplikacji. Tabele i schemat zostaną utworzone automatycznie w kolejnym kroku przez migracje Alembic.
 
-Połącz się z serwerem MySQL działającym w kontenerze Docker i wykonaj poniższy blok SQL jako użytkownik administracyjny, na przykład `root`.
+Połącz się z serwerem MySQL działającym lokalnie lub w kontenerze Docker i wykonaj poniższy blok SQL jako użytkownik administracyjny, na przykład `root`.
 
 ```sql
 CREATE DATABASE IF NOT EXISTS ksef_erp
@@ -63,11 +66,397 @@ GRANT ALL PRIVILEGES ON ksef_erp.* TO 'ksef_user'@'%';
 FLUSH PRIVILEGES;
 ```
 
-Jeżeli kontener publikuje port `3306` na hosta, możesz wykonać blok SQL z klienta MySQL na hoście albo wejść do kontenera poleceniem typu:
+Jeżeli MySQL działający w kontenerze Docker publikuje port `3306` na hosta, możesz wykonać blok SQL z klienta MySQL na hoście. Alternatywnie wejdź do kontenera i uruchom polecenie MySQL:
 
 ```bash
 docker exec -it <nazwa_kontenera_mysql> mysql -uroot -p
 ```
+
+Jeżeli MySQL jest zainstalowany lokalnie:
+
+```bash
+mysql -u root -p
+```
+
+Po wpisaniu hasła root będziesz w powłoce MySQL i możesz wkleić powyższy blok SQL.
+
+## Krok 4.1. Alternatywa: Kompletny skrypt SQL tworzący całą bazę
+
+Poniżej znajduje się kompletny skrypt SQL, który tworzy wszystkie tabele, relacje, indeksy i inicjalne dane dla bazy `ksef_erp`. Możesz go wykonać zamiast kroków Krok 4 + Krok 7, jeżeli preferencja preferujesz bezpośrednie tworzenie schematu bez użycia migracji Alembic.
+
+```sql
+USE mysql;
+CREATE DATABASE IF NOT EXISTS ksef_erp CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'ksef_user'@'%' IDENTIFIED BY 'change_me';
+GRANT ALL PRIVILEGES ON ksef_erp.* TO 'ksef_user'@'%';
+FLUSH PRIVILEGES;
+
+USE ksef_erp;
+
+CREATE TABLE app_user (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_uuid CHAR(36) NOT NULL,
+    username VARCHAR(100) NOT NULL,
+    email VARCHAR(255) NULL,
+    display_name VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    auth_provider VARCHAR(50) NOT NULL DEFAULT 'LOCAL' COMMENT 'LOCAL / ENTRA',
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    is_locked TINYINT(1) NOT NULL DEFAULT 0,
+    last_login_at DATETIME NULL,
+    metadata JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_app_user_uuid (user_uuid),
+    UNIQUE KEY uq_app_user_username (username),
+    UNIQUE KEY uq_app_user_email (email),
+    CHECK (metadata IS NULL OR JSON_VALID(metadata))
+) ENGINE=InnoDB;
+
+CREATE TABLE app_role (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    role_code VARCHAR(50) NOT NULL,
+    role_name VARCHAR(100) NOT NULL,
+    description VARCHAR(500) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_app_role_code (role_code)
+) ENGINE=InnoDB;
+
+CREATE TABLE app_user_role (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    role_id BIGINT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_app_user_role (user_id, role_id),
+    KEY idx_app_user_role_role_id (role_id),
+    CONSTRAINT fk_app_user_role_user
+        FOREIGN KEY (user_id) REFERENCES app_user(id) ON DELETE CASCADE,
+    CONSTRAINT fk_app_user_role_role
+        FOREIGN KEY (role_id) REFERENCES app_role(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+INSERT INTO app_role (role_code, role_name, description) VALUES
+('admin', 'Administrator', 'Pełne uprawnienia administracyjne'),
+('agent', 'Agent AI', 'Tworzenie draftów i operacje automatyczne bez akceptacji'),
+('reviewer', 'Reviewer', 'Edycja i akceptacja dokumentów'),
+('accountant', 'Księgowy', 'Operacje księgowe i statusy księgowe'),
+('viewer', 'Viewer', 'Dostęp tylko do odczytu');
+
+CREATE TABLE party (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    party_uuid CHAR(36) NOT NULL,
+    party_name VARCHAR(255) NOT NULL,
+    tax_id VARCHAR(20) NULL,
+    country_code VARCHAR(2) NULL,
+    street_address VARCHAR(255) NULL,
+    city VARCHAR(100) NULL,
+    postal_code VARCHAR(20) NULL,
+    email VARCHAR(255) NULL,
+    phone VARCHAR(20) NULL,
+    metadata JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_party_uuid (party_uuid),
+    KEY idx_party_tax_id (tax_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE dicts (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    dict_name VARCHAR(100) NOT NULL,
+    dict_code VARCHAR(100) NOT NULL,
+    dict_value VARCHAR(255) NOT NULL,
+    dict_description VARCHAR(500) NULL,
+    sort_order INT DEFAULT 0,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_dict_code (dict_name, dict_code),
+    KEY idx_dict_name (dict_name)
+) ENGINE=InnoDB;
+
+CREATE TABLE ksef_session (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    session_uuid CHAR(36) NOT NULL,
+    session_token VARCHAR(255) NULL,
+    reference_number VARCHAR(100) NULL,
+    status VARCHAR(50) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_ksef_session_uuid (session_uuid),
+    KEY idx_ksef_session_status (status)
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_uuid CHAR(36) NOT NULL,
+    invoice_number VARCHAR(100) NOT NULL,
+    direction_code VARCHAR(50) NOT NULL COMMENT 'SALE / PURCHASE',
+    invoice_type VARCHAR(50) NULL,
+    ksef_status_code VARCHAR(50) NULL COMMENT 'KSeF workflow status',
+    erp_status VARCHAR(50) NULL COMMENT 'ERP workflow status',
+    review_status VARCHAR(50) NULL COMMENT 'Review status: PENDING / APPROVED / REJECTED',
+    accounting_status VARCHAR(50) NULL COMMENT 'Accounting status: new / verified / posted / booked / cancelled',
+    issue_date DATE NOT NULL,
+    due_date DATE NULL,
+    invoice_currency VARCHAR(3) DEFAULT 'PLN',
+    total_netto DECIMAL(15,2) DEFAULT 0,
+    total_vat DECIMAL(15,2) DEFAULT 0,
+    total_gross DECIMAL(15,2) DEFAULT 0,
+    ksef_number VARCHAR(50) NULL,
+    ksef_hash VARCHAR(64) NULL,
+    review_locked_by BIGINT UNSIGNED NULL,
+    review_locked_at DATETIME NULL,
+    approved_by BIGINT UNSIGNED NULL,
+    approved_at DATETIME NULL,
+    accounting_marked_by BIGINT UNSIGNED NULL,
+    accounting_marked_at DATETIME NULL,
+    accounting_notes TEXT NULL,
+    accounting_qualified TINYINT(1) NULL DEFAULT 0,
+    accounting_batch_id VARCHAR(100) NULL,
+    notification_status VARCHAR(50) NULL COMMENT 'PENDING / SENT / FAILED / SKIPPED',
+    notification_channel VARCHAR(50) NULL COMMENT 'EMAIL / SLACK / NONE',
+    last_notification_at DATETIME NULL,
+    created_by BIGINT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_invoice_uuid (invoice_uuid),
+    KEY idx_invoice_number (invoice_number),
+    KEY idx_invoice_direction (direction_code),
+    KEY idx_invoice_ksef_status (ksef_status_code),
+    KEY idx_invoice_erp_status (erp_status),
+    KEY idx_invoice_review_status (review_status),
+    KEY idx_invoice_accounting_status (accounting_status),
+    KEY idx_invoice_approved_by (approved_by),
+    KEY idx_invoice_accounting_qualified (accounting_qualified),
+    CONSTRAINT fk_invoice_review_locked_by FOREIGN KEY (review_locked_by) REFERENCES app_user(id) ON DELETE SET NULL,
+    CONSTRAINT fk_invoice_approved_by FOREIGN KEY (approved_by) REFERENCES app_user(id) ON DELETE SET NULL,
+    CONSTRAINT fk_invoice_accounting_marked_by FOREIGN KEY (accounting_marked_by) REFERENCES app_user(id) ON DELETE SET NULL,
+    CONSTRAINT fk_invoice_created_by FOREIGN KEY (created_by) REFERENCES app_user(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_party (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    party_id BIGINT UNSIGNED NULL,
+    party_role VARCHAR(50) NOT NULL COMMENT 'SELLER / BUYER / ISSUER / RECIPIENT',
+    party_name VARCHAR(255) NOT NULL,
+    tax_id VARCHAR(20) NULL,
+    country_code VARCHAR(2) NULL,
+    street_address VARCHAR(255) NULL,
+    city VARCHAR(100) NULL,
+    postal_code VARCHAR(20) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_invoice_party_invoice (invoice_id),
+    CONSTRAINT fk_invoice_party_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_line (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    line_number INT NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    quantity DECIMAL(15,2) NOT NULL,
+    unit_price DECIMAL(15,2) NOT NULL,
+    net_amount DECIMAL(15,2) NOT NULL,
+    vat_rate DECIMAL(5,2) NOT NULL,
+    vat_code VARCHAR(50) NULL,
+    reverse_charge TINYINT(1) NOT NULL DEFAULT 0,
+    tax_procedure_code VARCHAR(50) NULL,
+    tax_exemption_reason VARCHAR(255) NULL,
+    vat_amount DECIMAL(15,2) NOT NULL,
+    gross_amount DECIMAL(15,2) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_invoice_line_invoice (invoice_id),
+    KEY idx_invoice_line_reverse_charge (reverse_charge),
+    KEY idx_invoice_line_vat_code (vat_code),
+    CONSTRAINT fk_invoice_line_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_payment (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    payment_method VARCHAR(50) NULL,
+    payment_term_days INT NULL,
+    bank_account VARCHAR(50) NULL,
+    swift_code VARCHAR(20) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_invoice_payment_invoice (invoice_id),
+    CONSTRAINT fk_invoice_payment_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_vat_summary (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    vat_rate DECIMAL(5,2) NOT NULL,
+    vat_code VARCHAR(50) NULL,
+    net_amount DECIMAL(15,2) NOT NULL,
+    vat_amount DECIMAL(15,2) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_invoice_vat_summary_invoice (invoice_id),
+    CONSTRAINT fk_invoice_vat_summary_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_relation (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    related_invoice_id BIGINT UNSIGNED NULL,
+    relation_type VARCHAR(50) NULL COMMENT 'CORRECTION_OF / CORRECTED_BY / REFERENCE_TO',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_invoice_relation_invoice (invoice_id),
+    CONSTRAINT fk_invoice_relation_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_attachment (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    attachment_uuid CHAR(36) NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    file_size BIGINT NOT NULL,
+    mime_type VARCHAR(100) NULL,
+    file_hash VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_invoice_attachment_uuid (attachment_uuid),
+    KEY idx_invoice_attachment_invoice (invoice_id),
+    CONSTRAINT fk_invoice_attachment_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_payload (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    payload_uuid CHAR(36) NOT NULL,
+    payload_type VARCHAR(100) NOT NULL COMMENT 'KSEF_XML / KSEF_RESPONSE / etc',
+    payload_data LONGTEXT NOT NULL,
+    payload_hash VARCHAR(64) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_invoice_payload_uuid (payload_uuid),
+    KEY idx_invoice_payload_invoice (invoice_id),
+    KEY idx_invoice_payload_type (payload_type),
+    CONSTRAINT fk_invoice_payload_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE invoice_event (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    event_uuid CHAR(36) NOT NULL,
+    event_type VARCHAR(100) NOT NULL COMMENT 'CREATED / UPDATED / APPROVED / SENT_TO_KSEF etc',
+    event_description VARCHAR(500) NULL,
+    event_actor_id BIGINT UNSIGNED NULL,
+    event_metadata JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_invoice_event_uuid (event_uuid),
+    KEY idx_invoice_event_invoice (invoice_id),
+    KEY idx_invoice_event_type (event_type),
+    CONSTRAINT fk_invoice_event_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE integration_job (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    job_uuid CHAR(36) NOT NULL,
+    job_type VARCHAR(100) NOT NULL COMMENT 'SEND_TO_KSEF / POLL_KSEF_STATUS / SEND_NOTIFICATION etc',
+    status VARCHAR(50) NOT NULL COMMENT 'NEW / PROCESSING / DONE / FAILED',
+    session_id BIGINT UNSIGNED NULL,
+    related_entity_type VARCHAR(50) NULL COMMENT 'INVOICE / ACCOUNTING_BATCH / NOTIFICATION',
+    related_entity_id VARCHAR(100) NULL,
+    attempt_count INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 3,
+    last_error VARCHAR(1000) NULL,
+    locked_by VARCHAR(100) NULL,
+    locked_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_integration_job_uuid (job_uuid),
+    KEY idx_integration_job_status (status),
+    KEY idx_integration_job_type (job_type),
+    KEY idx_integration_job_related_entity (related_entity_type, related_entity_id),
+    KEY idx_integration_job_locked_at (locked_at),
+    CONSTRAINT fk_integration_job_session FOREIGN KEY (session_id) REFERENCES ksef_session(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE accounting_batch (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    batch_uuid CHAR(36) NOT NULL,
+    batch_code VARCHAR(100) NOT NULL,
+    batch_type VARCHAR(50) NOT NULL COMMENT 'PURCHASE_MONTHLY',
+    status VARCHAR(50) NOT NULL COMMENT 'NEW / GENERATED / SENT / FAILED / CLOSED',
+    period_year INT NOT NULL,
+    period_month INT NOT NULL,
+    criteria_json JSON NULL,
+    item_count INT NOT NULL DEFAULT 0,
+    created_by BIGINT UNSIGNED NULL,
+    approved_by BIGINT UNSIGNED NULL,
+    sent_at DATETIME NULL,
+    metadata JSON NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_accounting_batch_uuid (batch_uuid),
+    UNIQUE KEY uq_accounting_batch_code (batch_code),
+    KEY idx_accounting_batch_status (status),
+    KEY idx_accounting_batch_period (period_year, period_month),
+    CONSTRAINT fk_accounting_batch_created_by FOREIGN KEY (created_by) REFERENCES app_user(id) ON DELETE SET NULL,
+    CONSTRAINT fk_accounting_batch_approved_by FOREIGN KEY (approved_by) REFERENCES app_user(id) ON DELETE SET NULL,
+    CHECK (criteria_json IS NULL OR JSON_VALID(criteria_json)),
+    CHECK (metadata IS NULL OR JSON_VALID(metadata))
+) ENGINE=InnoDB;
+
+CREATE TABLE accounting_batch_invoice (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    batch_id BIGINT UNSIGNED NOT NULL,
+    invoice_id BIGINT UNSIGNED NOT NULL,
+    inclusion_status VARCHAR(50) NOT NULL COMMENT 'SELECTED / SENT / SKIPPED / REJECTED',
+    inclusion_reason VARCHAR(1000) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_accounting_batch_invoice (batch_id, invoice_id),
+    KEY idx_accounting_batch_invoice_invoice_id (invoice_id),
+    CONSTRAINT fk_accounting_batch_invoice_batch FOREIGN KEY (batch_id) REFERENCES accounting_batch(id) ON DELETE CASCADE,
+    CONSTRAINT fk_accounting_batch_invoice_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE notification_log (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    notification_uuid CHAR(36) NOT NULL,
+    invoice_id BIGINT UNSIGNED NULL,
+    batch_id BIGINT UNSIGNED NULL,
+    channel VARCHAR(50) NOT NULL COMMENT 'EMAIL / SLACK',
+    recipient VARCHAR(255) NOT NULL,
+    subject VARCHAR(500) NULL,
+    payload JSON NULL,
+    status VARCHAR(50) NOT NULL COMMENT 'NEW / SENT / FAILED',
+    error_message VARCHAR(2000) NULL,
+    sent_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_notification_log_uuid (notification_uuid),
+    KEY idx_notification_log_invoice_id (invoice_id),
+    KEY idx_notification_log_batch_id (batch_id),
+    KEY idx_notification_log_status (status),
+    CONSTRAINT fk_notification_log_invoice FOREIGN KEY (invoice_id) REFERENCES invoice(id) ON DELETE SET NULL,
+    CONSTRAINT fk_notification_log_batch FOREIGN KEY (batch_id) REFERENCES accounting_batch(id) ON DELETE SET NULL,
+    CHECK (payload IS NULL OR JSON_VALID(payload))
+) ENGINE=InnoDB;
+```
+
+Po wykonaniu tego skryptu baza `ksef_erp` będzie w pełni przygotowana ze wszystkimi tabelami. Następnie można pominąć Krok 7 i przejść bezpośrednio do Kroku 8 (załadowanie danych słownikowych).
+
+Alternatywnie, rekomendujemy używać migracji Alembic (Krok 7), które są łatwiejsze do utrzymania i wersjonowania.
 
 ## Krok 5. Utwórz plik konfiguracyjny `.env`
 
@@ -380,7 +769,45 @@ Najważniejszy obecnie scenariusz działania aplikacji wygląda tak:
 
 ## Krok 7. Utwórz lub zaktualizuj schemat bazy
 
-Ten krok przygotowuje strukturę bazy danych przed załadowaniem słowników i utworzeniem użytkownika administratora. Repozytorium zawiera teraz migracje Alembic, więc to one są preferowanym sposobem tworzenia i aktualizowania schematu.
+Ten krok przygotowuje strukturę bazy danych przed załadowaniem słowników i utworzeniem użytkownika administratora. Migracje Alembic tworzą kompletny schemat zawierający wszystkie tabele i rozszerzenia niezbędne do pracy aplikacji.
+
+### Tabele tworzone przez migracje
+
+Migracje tworzą lub rozszerzają następujące komponenty bazy:
+
+**Tabele użytkowników i ról:**
+- `app_user` — rejestr użytkowników aplikacji z haszami haseł, statusami blokady i metadanymi
+- `app_role` — słownik dostępnych ról systemowych (`admin`, `agent`, `reviewer`, `accountant`, `viewer`)
+- `app_user_role` — powiązania użytkowników z rolami
+
+**Tabele dokumentów i faktur:**
+- `invoice` — główny rejestr faktur z rozszerzeniami o:
+  - statusy review i akceptacji (`review_status`, `approved_by`, `approved_at`)
+  - statusy księgowe i kwalifikację (`accounting_status`, `accounting_qualified`, `accounting_batch_id`)
+  - ślady zmian (`review_locked_by`, `accounting_marked_by`)
+  - powiadomienia (`notification_status`, `notification_channel`, `last_notification_at`)
+- `invoice_line` — pozycje faktur z dodatkowymi polami podatkowymi:
+  - `reverse_charge` — flaga reverse charge
+  - `tax_procedure_code` — kod procedury podatkowej
+  - `tax_exemption_reason` — przyczyna zwolnienia
+- `invoice_party`, `invoice_payload`, `invoice_event`, `invoice_payment`, `invoice_relation`, `invoice_vat_summary`, `invoice_attachment` — tabele wspierające pełną strukturę dokumentu
+
+**Tabele integracji i zadań:**
+- `integration_job` — kolejka zadań integracyjnych z rozszerzeniami o:
+  - powiązanie z jednostkami (`related_entity_type`, `related_entity_id`)
+  - blokady robocze (`locked_by`, `locked_at`)
+- `ksef_session` — sesje integracyjne z systemem KSeF
+
+**Tabele procesów księgowych i powiadomień:**
+- `accounting_batch` — okresy zbiorcze dla batch processing (np. faktury zakupowe miesięczne)
+- `accounting_batch_invoice` — powiązanie faktur z batchami księgowymi
+- `notification_log` — rejestr wszystkich wysyłanych powiadomień (e-mail, Slack) z statusami i payload'ami
+
+**Tabele słownikowe:**
+- `party` — słownik stron dokumentów
+- `dicts` — rejestr słowników systemowych (kierunki, typy, statusy, role stron)
+
+### Uruchomienie migracji
 
 Dla pustej bazy lub przy aktualizacji istniejącej struktury uruchom:
 
@@ -388,7 +815,7 @@ Dla pustej bazy lub przy aktualizacji istniejącej struktury uruchom:
 alembic upgrade head
 ```
 
-Skrypt `python scripts/create_tables.py` pozostaje pomocniczą opcją tylko do jednorazowego bootstrapu pustej lokalnej bazy. Nie służy do aktualizacji istniejącego schematu.
+Skrypt `python scripts/create_tables.py` pozostaje pomocniczą opcją tylko do jednorazowego bootstrapu pustej lokalnej bazy, jeżeli migracje z jakiegoś powodu nie mogą być uruchomione. Nie służy do aktualizacji istniejącego schematu.
 
 ## Krok 8. Załaduj dane słownikowe
 
@@ -469,6 +896,69 @@ Minimalny zestaw testów regresyjnych obejmuje walidację wyliczeń faktur, logi
 ```bash
 python -m pytest tests
 ```
+
+## Schemat bazy danych v1
+
+Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP. Po uruchomieniu migracji Alembic zawiera następujące komponenty:
+
+### Zarządzanie dostępem
+
+| Tabela | Zawartość |
+| --- | --- |
+| `app_user` | Konta użytkowników aplikacji z hasłami, statusami i metadanymi |
+| `app_role` | Role systemowe: `admin`, `agent`, `reviewer`, `accountant`, `viewer` |
+| `app_user_role` | Powiązania: które role mają konkretni użytkownicy |
+
+### Rejestry dokumentów
+
+| Tabela | Zawartość |
+| --- | --- |
+| `invoice` | Główny rejestr faktur (sprzedażowych i zakupowych) z pełnym cyklem życia |
+| `invoice_line` | Pozycje faktury z podatkami, VAT i kodami procedur podatkowych |
+| `invoice_party` | Strony dokumentów: sprzedawca, nabywca, wystawca, odbiorca |
+| `invoice_payment` | Informacje o płatności i warunkach płatności |
+| `invoice_vat_summary` | Podsumowania VAT dla każdej stawki w dokumencie |
+| `invoice_relation` | Powiązania między fakturami (np. korekta do oryginału) |
+| `invoice_attachment` | Załączniki i pliki związane z fakturą |
+
+### Integracja i workflow
+
+| Tabela | Zawartość |
+| --- | --- |
+| `invoice_payload` | Payloady XML faktury i odpowiedzi z KSeF |
+| `invoice_event` | Pełna historia zdarzeń: tworzenie, edycja, akceptacja, wysyłka, notyfikacje |
+| `ksef_session` | Sesje integracyjne z systemem KSeF |
+| `integration_job` | Kolejka asynchronicznych zadań: wysyłka, polling, notyfikacje |
+
+### Procesy księgowe
+
+| Tabela | Zawartość |
+| --- | --- |
+| `accounting_batch` | Okresy zbiorcze dla batch processing (np. faktury zakupowe miesięczne) |
+| `accounting_batch_invoice` | Fakty: które faktury należą do które batcha |
+| `notification_log` | Historia wysyłania powiadomień (e-mail, Slack) z statusami |
+
+### Słowniki referencyjne
+
+| Tabela | Zawartość |
+| --- | --- |
+| `party` | Słownik stron: firmy, podmioty, adresy |
+| `dicts` | Słowniki systemowe: kierunki faktur, typy, statusy KSeF, role stron |
+
+### Statusy i przepływy
+
+Dokumenty w systemie przechodzą przez kilka niezależnych wymiarów statusów:
+
+- **`ksef_status_code`**: `DRAFT` → `GENERATED` → `QUEUED` → `SENT` → `PROCESSING` → `ACCEPTED`/`REJECTED`
+- **`erp_status`**: `DRAFT_CREATED` → `READY_FOR_REVIEW` → `APPROVED` → `QUEUED_FOR_KSEF` → `SENT_TO_KSEF` → `KSEF_ACCEPTED` → `READY_FOR_ACCOUNTING` → `COMPLETED`
+- **`accounting_status`**: `new` → `verified` → `posted` → `booked` → `cancelled`
+- **`review_status`**: `PENDING` → `APPROVED` / `REJECTED`
+
+Te statusy są niezależne, co pozwala na elastyczne modelowanie złożonych procesów biznesowych.
+
+### Klucze obce i spójność
+
+Wszystkie tabele zawierają odpowiednie klucze obce (`FOREIGN KEY`), indeksy (`KEY`) i ograniczenia (`CHECK`), które zapewniają integralność danych. Operacje usuwania są zabezpieczone przez `ON DELETE CASCADE` lub `ON DELETE SET NULL` zależnie od semantyki powiązania.
 
 ## Skrócona kolejność działań
 
