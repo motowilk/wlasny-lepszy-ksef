@@ -53,7 +53,7 @@ def upgrade() -> None:
         "invoice",
         "accounting_batch",
         ["accounting_batch_id"],
-        ["batch_code"],
+        ["id"],
         ondelete="SET NULL",
     )
 

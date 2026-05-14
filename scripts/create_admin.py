@@ -5,6 +5,12 @@ Użycie:
     cd ksef_app
     python scripts/create_admin.py
 """
+import sys
+from pathlib import Path
+
+# Add parent directory to path so we can import app module
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 import uuid
 
 from sqlalchemy import select

@@ -1,12 +1,14 @@
 from functools import lru_cache
 from pathlib import Path
+import sys
 from urllib.parse import quote_plus
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-
+#BASE_DIR = Path(__file__).resolve().parents[2]
+# Add parent directory to path so we can import app module
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
