@@ -1,52 +1,284 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<h1>Nowy draft faktury</h1>
+{% set sel_currency = prefill.get('currency_code', 'PLN') %}
+{% set bvt = prefill.get('buyer_vat_type', 'NIP') %}
 
-<form method="post" action="/ui/invoices/new" class="form-grid">
-    <label>
-        Numer faktury
-        <input type="text" name="invoice_number" required>
-    </label>
+<div class="page-header">
+    <h1>Nowy draft faktury sprzedażowej</h1>
+    <a class="btn secondary" href="/ui/invoices">Anuluj</a>
+</div>
 
-    <label>
-        Data wystawienia
-        <input type="date" name="issue_date" required>
-    </label>
+<form method="post" action="/ui/invoices/new" id="invoice-form">
 
-    <label>
-        Sprzedawca
-        <input type="text" name="seller_name" required>
-    </label>
+    <!-- ═══ NAGŁÓWEK FAKTURY ═══ -->
+    <section class="card">
+        <h2>Nagłówek faktury</h2>
+        <div class="form-grid form-grid-3">
+            <label>
+                Numer faktury *
+                <input type="text" name="invoice_number" value="{{ prefill.get('invoice_number', '') }}" required placeholder="np. HAYS/A1/4/2026">
+            </label>
+            <label>
+                Data wystawienia *
+                <input type="date" name="issue_date" value="{{ prefill.get('issue_date', '') }}" required>
+            </label>
+            <label>
+                Miejsce wystawienia
+                <input type="text" name="issue_place" value="{{ prefill.get('issue_place', '') }}" placeholder="np. Szczecin">
+            </label>
+            <label>
+                Data sprzedaży / dostawy
+                <input type="date" name="sale_date" value="{{ prefill.get('sale_date', '') }}">
+            </label>
+            <label>
+                Termin płatności
+                <input type="date" name="due_date" value="{{ prefill.get('due_date', '') }}">
+            </label>
+            <label>
+                Waluta
+                <select name="currency_code" id="currency_code" onchange="toggleExchangeRate()">
+                    {% for c in ['PLN','EUR','USD','GBP','CHF','CZK','DKK','NOK','SEK'] %}
+                    <option value="{{ c }}"{{ ' selected' if sel_currency == c }}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label id="exchange_rate_label">
+                Kurs wymiany (do PLN)
+                <input type="number" step="0.0001" name="exchange_rate" value="{{ prefill.get('exchange_rate', '') }}" placeholder="np. 4.4270">
+            </label>
+        </div>
+    </section>
 
-    <label>
-        Nabywca
-        <input type="text" name="buyer_name" required>
-    </label>
+    <!-- ═══ PŁATNOŚĆ ═══ -->
+    <section class="card">
+        <h2>Płatność</h2>
+        <div class="form-grid form-grid-3">
+            <label>
+                Forma płatności
+                <select name="payment_method">
+                    <option value="">— wybierz —</option>
+                    <option value="1"{{ ' selected' if prefill.get('payment_method') == '1' }}>Gotówka</option>
+                    <option value="2"{{ ' selected' if prefill.get('payment_method') == '2' }}>Karta</option>
+                    <option value="3"{{ ' selected' if prefill.get('payment_method') == '3' }}>Kredyt</option>
+                    <option value="5"{{ ' selected' if prefill.get('payment_method') == '5' }}>Kompensata</option>
+                    <option value="6"{{ ' selected' if prefill.get('payment_method') == '6' }}>Przelew bankowy</option>
+                    <option value="7"{{ ' selected' if prefill.get('payment_method') == '7' }}>Płatność mobilna</option>
+                </select>
+            </label>
+            <label class="span-2">
+                Nr rachunku bankowego (IBAN)
+                <input type="text" name="payment_account" value="{{ prefill.get('payment_account', '') }}" placeholder="PL03 1020 4870 0000 5002 0098 5796">
+            </label>
+            <label>
+                Kod SWIFT / BIC
+                <input type="text" name="payment_swift" value="{{ prefill.get('payment_swift', '') }}" placeholder="np. BPKOPLPW">
+            </label>
+            <label class="span-2">
+                Nazwa banku
+                <input type="text" name="payment_bank_name" value="{{ prefill.get('payment_bank_name', '') }}" placeholder="np. PKO Bank Polski SA">
+            </label>
+        </div>
+    </section>
 
-    <label>
-        Nazwa produktu/usługi
-        <input type="text" name="product_name" required>
-    </label>
+    <!-- ═══ SPRZEDAWCA ═══ -->
+    <section class="card">
+        <h2>Sprzedawca — Podmiot 1</h2>
+        <div class="form-grid form-grid-3">
+            <label class="span-2">
+                Pełna nazwa *
+                <input type="text" name="seller_name" value="{{ prefill.get('seller_name', '') }}" required placeholder="Nazwa sprzedawcy">
+            </label>
+            <label>
+                NIP
+                <input type="text" name="seller_nip" value="{{ prefill.get('seller_nip', '') }}" placeholder="np. 8522713795">
+            </label>
+            <label>
+                Kraj (ISO 2)
+                <input type="text" name="seller_country" value="{{ prefill.get('seller_country', 'PL') }}" maxlength="2" placeholder="PL">
+            </label>
+            <label class="span-2">
+                Adres
+                <input type="text" name="seller_address" value="{{ prefill.get('seller_address', '') }}" placeholder="ul. Łokietka 5 lok. 2, 70-254 Szczecin">
+            </label>
+        </div>
+    </section>
 
-    <label>
-        Ilość
-        <input type="number" step="0.000001" name="quantity" value="1" required>
-    </label>
+    <!-- ═══ NABYWCA ═══ -->
+    <section class="card">
+        <h2>Nabywca — Podmiot 2</h2>
+        <div class="form-grid form-grid-3">
+            <label class="span-2">
+                Pełna nazwa *
+                <input type="text" name="buyer_name" value="{{ prefill.get('buyer_name', '') }}" required placeholder="Nazwa nabywcy">
+            </label>
+            <label>
+                Kraj (ISO 2)
+                <input type="text" name="buyer_country" value="{{ prefill.get('buyer_country', '') }}" maxlength="2" placeholder="DE">
+            </label>
+            <label>
+                Typ identyfikatora VAT
+                <select name="buyer_vat_type" id="buyer_vat_type" onchange="toggleBuyerVat()">
+                    <option value="NIP"{{ ' selected' if bvt == 'NIP' }}>NIP (krajowy)</option>
+                    <option value="EU"{{ ' selected' if bvt == 'EU' }}>NIP UE (zagraniczny)</option>
+                    <option value="NONE"{{ ' selected' if bvt == 'NONE' }}>Brak / osoba fizyczna</option>
+                </select>
+            </label>
+            <label id="buyer_nip_label">
+                NIP nabywcy
+                <input type="text" name="buyer_nip" value="{{ prefill.get('buyer_nip', '') }}" placeholder="np. 1234567890">
+            </label>
+            <label id="buyer_eu_prefix_label" style="display:none">
+                Prefiks UE (kraj)
+                <input type="text" name="buyer_eu_prefix" value="{{ prefill.get('buyer_eu_prefix', '') }}" maxlength="2" placeholder="DE">
+            </label>
+            <label id="buyer_eu_vat_label" style="display:none">
+                NrVatUE
+                <input type="text" name="buyer_eu_vat" value="{{ prefill.get('buyer_eu_vat', '') }}" placeholder="np. 812871896">
+            </label>
+            <label class="span-2">
+                Adres
+                <input type="text" name="buyer_address" value="{{ prefill.get('buyer_address', '') }}" placeholder="Glücksteinallee 67, 68163 Mannheim, Deutschland">
+            </label>
+        </div>
+    </section>
 
-    <label>
-        Cena netto
-        <input type="number" step="0.000001" name="unit_price_net" required>
-    </label>
+    <!-- ═══ POZYCJE ═══ -->
+    <section class="card">
+        <h2>Pozycje faktury</h2>
+        <div style="overflow-x:auto">
+            <table class="table" style="min-width:920px">
+                <thead>
+                    <tr>
+                        <th style="width:36px">#</th>
+                        <th>Opis towaru / usługi</th>
+                        <th style="width:75px">J.m.</th>
+                        <th style="width:80px">Ilość</th>
+                        <th style="width:105px">Cena netto</th>
+                        <th style="width:105px">Stawka VAT</th>
+                        <th style="width:105px">Kurs waluty</th>
+                        <th style="width:40px"></th>
+                    </tr>
+                </thead>
+                <tbody id="lines-body"></tbody>
+            </table>
+        </div>
+        <div style="margin-top:12px">
+            <button type="button" class="btn secondary" onclick="addLine()">+ Dodaj pozycję</button>
+        </div>
+        <input type="hidden" name="line_count" id="line_count" value="0">
+    </section>
 
-    <label>
-        VAT %
-        <input type="number" step="0.01" name="vat_rate" value="23" required>
-    </label>
+    <!-- ═══ WARUNKI TRANSAKCJI ═══ -->
+    <section class="card">
+        <h2>Warunki transakcji <span style="font-weight:400;color:#888;font-size:13px">(opcjonalnie)</span></h2>
+        <div class="form-grid form-grid-3">
+            <label>
+                Data umowy
+                <input type="date" name="contract_date" value="{{ prefill.get('contract_date', '') }}">
+            </label>
+            <label class="span-2">
+                Numer / opis umowy
+                <input type="text" name="contract_number" value="{{ prefill.get('contract_number', '') }}" placeholder="np. Referenz: Projektnummer 60C1529183005">
+            </label>
+        </div>
+    </section>
 
-    <div class="form-actions">
+    <!-- ═══ STOPKA ═══ -->
+    <section class="card">
+        <h2>Stopka faktury <span style="font-weight:400;color:#888;font-size:13px">(opcjonalnie)</span></h2>
+        <label style="font-size:13px;font-weight:600;display:flex;flex-direction:column;gap:4px">
+            Informacja dodatkowa
+            <textarea name="footer_note" rows="2" class="form-textarea">{{ prefill.get('footer_note', '') }}</textarea>
+        </label>
+    </section>
+
+    <div class="form-actions" style="margin-bottom:40px">
         <button type="submit" class="btn">Zapisz draft</button>
         <a class="btn secondary" href="/ui/invoices">Anuluj</a>
     </div>
+
 </form>
+
+<script>
+var VAT_OPTIONS = [
+    {v:'23', l:'23%'},
+    {v:'8',  l:'8%'},
+    {v:'5',  l:'5%'},
+    {v:'0',  l:'0%'},
+    {v:'oo', l:'zw. (oo)'},
+    {v:'np', l:'NP'},
+];
+
+function vatSelect(name, selected) {
+    return '<select name="' + name + '" style="width:100%">' +
+        VAT_OPTIONS.map(function(o) {
+            return '<option value="' + o.v + '"' + (o.v === selected ? ' selected' : '') + '>' + o.l + '</option>';
+        }).join('') + '</select>';
+}
+
+function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function addLine(desc, unit, qty, price, vat, exr) {
+    var n = document.querySelectorAll('#lines-body tr').length + 1;
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+        '<td style="text-align:center;color:#888">' + n + '</td>' +
+        '<td><input type="text" name="line_description_' + n + '" value="' + esc(desc) + '" required style="width:100%;min-width:200px"></td>' +
+        '<td><input type="text" name="line_unit_' + n + '" value="' + esc(unit) + '" style="width:100%"></td>' +
+        '<td><input type="number" step="0.000001" name="line_qty_' + n + '" value="' + esc(qty) + '" required style="width:100%"></td>' +
+        '<td><input type="number" step="0.000001" name="line_price_' + n + '" value="' + esc(price) + '" required style="width:100%"></td>' +
+        '<td>' + vatSelect('line_vat_' + n, vat || '23') + '</td>' +
+        '<td><input type="number" step="0.0001" name="line_exchange_rate_' + n + '" value="' + esc(exr) + '" placeholder="auto" style="width:100%"></td>' +
+        '<td><button type="button" class="btn secondary" onclick="removeLine(this)" title="Usuń" style="padding:4px 8px">✕</button></td>';
+    document.getElementById('lines-body').appendChild(tr);
+    document.getElementById('line_count').value = document.querySelectorAll('#lines-body tr').length;
+}
+
+function removeLine(btn) {
+    btn.closest('tr').remove();
+    renumberLines();
+}
+
+function renumberLines() {
+    var rows = document.querySelectorAll('#lines-body tr');
+    rows.forEach(function(row, i) {
+        var n = i + 1;
+        row.querySelector('td:first-child').textContent = n;
+        row.querySelectorAll('[name]').forEach(function(el) {
+            el.name = el.name.replace(/_\d+$/, '_' + n);
+        });
+    });
+    document.getElementById('line_count').value = rows.length;
+}
+
+function toggleExchangeRate() {
+    var cur = document.getElementById('currency_code').value;
+    document.getElementById('exchange_rate_label').style.display = (cur !== 'PLN') ? '' : 'none';
+}
+
+function toggleBuyerVat() {
+    var t = document.getElementById('buyer_vat_type').value;
+    document.getElementById('buyer_nip_label').style.display        = (t === 'NIP')  ? '' : 'none';
+    document.getElementById('buyer_eu_prefix_label').style.display  = (t === 'EU')   ? '' : 'none';
+    document.getElementById('buyer_eu_vat_label').style.display     = (t === 'EU')   ? '' : 'none';
+}
+
+var PREFILLED_LINES = {{ prefill.get('lines', [])|tojson }};
+
+(function init() {
+    toggleExchangeRate();
+    toggleBuyerVat();
+    if (PREFILLED_LINES.length > 0) {
+        PREFILLED_LINES.forEach(function(l) {
+            addLine(l.description, l.unit, l.qty, l.price, l.vat_code, l.exchange_rate);
+        });
+    } else {
+        addLine();
+    }
+})();
+</script>
 {% endblock %}

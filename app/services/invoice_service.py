@@ -2,8 +2,8 @@ import hashlib
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
-from xml.sax.saxutils import escape as xml_escape
 
+from lxml import etree as lxml_etree
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -216,7 +216,14 @@ class InvoiceService:
                 "Faktura nie przeszła walidacji: " + "; ".join(validation_result.errors)
             )
 
-        xml_content = InvoiceService._generate_mock_xml(invoice)
+        xml_content = InvoiceService._generate_fa3_xml(invoice)
+
+        xsd_errors = ValidationService.validate_ksef_xml(xml_content)
+        if xsd_errors:
+            raise ValueError(
+                "XML nie przeszedł walidacji XSD: " + "; ".join(xsd_errors[:5])
+            )
+
         xml_hash = hashlib.sha256(xml_content.encode("utf-8")).hexdigest()
 
         invoice.approved_by = payload.approved_by_user_id
@@ -235,8 +242,8 @@ class InvoiceService:
                 content_format="XML",
                 content=xml_content,
                 content_sha256=xml_hash,
-                api_endpoint="/mock/ksef/send",
-                transport_metadata={"mode": "mock"},
+                api_endpoint="/api/online/Send/Invoices",
+                transport_metadata={"schema": "FA(3)", "version": "1-0E"},
             )
         )
 
@@ -499,53 +506,263 @@ class InvoiceService:
         db.flush()
 
     @staticmethod
-    def _generate_mock_xml(invoice: Invoice) -> str:
-        seller = next((p for p in invoice.parties if p.role_code == "SELLER"), None)
-        buyer = next((p for p in invoice.parties if p.role_code == "BUYER"), None)
+    def _generate_fa3_xml(invoice: Invoice) -> str:
+        """Generate a KSeF-compliant FA(3) v1-0E XML document for the invoice."""
+        FA3_NS = "http://crd.gov.pl/wzor/2025/06/25/13775/"
+        NSMAP = {None: FA3_NS}
 
-        lines_xml = []
+        def _sub(parent, tag, text=None, attrib=None):
+            el = lxml_etree.SubElement(parent, f"{{{FA3_NS}}}{tag}", attrib or {})
+            if text is not None:
+                el.text = str(text)
+            return el
+
+        def _fmt(val) -> str:
+            """Format as TKwotowy (up to 2 decimal places)."""
+            return str(Decimal(str(val)).quantize(TWOPLACES))
+
+        def _fmt6(val) -> str:
+            """Format as TIlosci / TKwotowy2 (up to 6 significant decimal places)."""
+            s = str(Decimal(str(val)).quantize(Decimal("0.000001"))).rstrip("0").rstrip(".")
+            return s if s else "0"
+
+        def _build_addr_l1(party) -> str:
+            parts = []
+            if party.street:
+                street_part = party.street
+                if party.building_no:
+                    street_part += f" {party.building_no}"
+                    if party.apartment_no:
+                        street_part += f"/{party.apartment_no}"
+                parts.append(street_part)
+            if party.postal_code and party.city:
+                parts.append(f"{party.postal_code} {party.city}")
+            elif party.city:
+                parts.append(party.city)
+            if parts:
+                return ", ".join(parts)
+            return (party.extra_data or {}).get("address_l1", "")
+
+        # P_12 per-line VAT code → TStawkaPodatku
+        P12_MAP: dict[str, str] = {
+            "23": "23", "22": "22", "8": "8", "7": "7",
+            "5": "5", "4": "4", "3": "3",
+            "0": "0", "0 KR": "0", "0 WDT": "0", "0 EX": "0",
+            "zw": "zw", "oo": "oo",
+            "np": "np", "np I": "np", "np II": "np",
+            "oss": "oss",
+        }
+
+        # vat_code → P_13 bucket key
+        VAT_CODE_TO_P13: dict[str, str] = {
+            "23": "1", "22": "1",
+            "8": "2", "7": "2",
+            "5": "3",
+            "0": "6_1", "0 KR": "6_1",
+            "0 WDT": "6_2",
+            "0 EX": "6_3",
+            "zw": "7",
+            "np": "8", "np I": "8",
+            "np II": "9",
+            "oo": "10",
+        }
+        # P_13 buckets with paired P_14 (these have non-zero VAT rates)
+        HAS_P14 = {"1", "2", "3"}
+
+        # Aggregate P_13 / P_14 totals
+        p13_nets: dict[str, Decimal] = {}
+        p13_vats: dict[str, Decimal] = {}
+        has_zw = False
+        has_oo = False
+        for line in invoice.lines:
+            code = (line.vat_code or "").strip()
+            key = VAT_CODE_TO_P13.get(code, "10")
+            p13_nets[key] = p13_nets.get(key, Decimal("0")) + Decimal(str(line.net_amount))
+            if key in HAS_P14:
+                p13_vats[key] = p13_vats.get(key, Decimal("0")) + Decimal(str(line.vat_amount))
+            if code == "zw":
+                has_zw = True
+            if code == "oo":
+                has_oo = True
+
+        fa_meta: dict = invoice.fa_metadata or {}
+
+        # ── Root ──────────────────────────────────────────────────────────────
+        root = lxml_etree.Element(f"{{{FA3_NS}}}Faktura", nsmap=NSMAP)
+
+        # ── Naglowek ──────────────────────────────────────────────────────────
+        nagl = _sub(root, "Naglowek")
+        kf = _sub(nagl, "KodFormularza", "FA",
+                  attrib={"kodSystemowy": "FA (3)", "wersjaSchemy": "1-0E"})  # noqa: F841
+        _sub(nagl, "WariantFormularza", "3")
+        _sub(nagl, "DataWytworzeniaFa",
+             datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.0000000Z"))
+        _sub(nagl, "SystemInfo", "KSeF-App v1.0")
+
+        # ── Podmiot1 (seller) ─────────────────────────────────────────────────
+        seller_link = next((p for p in invoice.parties if p.role_code == "SELLER"), None)
+        seller = seller_link.party if seller_link else None
+
+        p1 = _sub(root, "Podmiot1")
+        # PrefiksPodatnika fixed="PL" for Polish sellers
+        if not seller or not seller.country_code or seller.country_code == "PL":
+            _sub(p1, "PrefiksPodatnika", "PL")
+        di1 = _sub(p1, "DaneIdentyfikacyjne")
+        _sub(di1, "NIP", (seller.tax_id or "") if seller else "")
+        _sub(di1, "Nazwa", (seller.name_full or "") if seller else "")
+        adres1 = _sub(p1, "Adres")
+        _sub(adres1, "KodKraju",
+             (seller.country_code or "PL") if seller else "PL")
+        addr_l1 = _build_addr_l1(seller) if seller else ""
+        if addr_l1:
+            _sub(adres1, "AdresL1", addr_l1)
+
+        # ── Podmiot2 (buyer) ──────────────────────────────────────────────────
+        buyer_link = next((p for p in invoice.parties if p.role_code == "BUYER"), None)
+        buyer = buyer_link.party if buyer_link else None
+
+        p2 = _sub(root, "Podmiot2")
+        di2 = _sub(p2, "DaneIdentyfikacyjne")
+        if buyer:
+            bp = buyer
+            if bp.vat_eu_id:
+                _sub(di2, "KodUE", bp.country_code or "")
+                _sub(di2, "NrVatUE", bp.vat_eu_id)
+                _sub(di2, "Nazwa", bp.name_full or "")
+            elif bp.tax_id and (not bp.country_code or bp.country_code == "PL"):
+                _sub(di2, "NIP", bp.tax_id)
+                _sub(di2, "Nazwa", bp.name_full or "")
+            elif bp.tax_id:
+                _sub(di2, "KodKraju", bp.country_code or "")
+                _sub(di2, "NrID", bp.tax_id)
+                _sub(di2, "Nazwa", bp.name_full or "")
+            else:
+                _sub(di2, "BrakID", "1")
+                if bp.name_full:
+                    _sub(di2, "Nazwa", bp.name_full)
+        else:
+            _sub(di2, "BrakID", "1")
+
+        # Optional buyer address
+        buyer_addr = _build_addr_l1(buyer) if buyer else ""
+        if buyer_addr and buyer:
+            adres2 = _sub(p2, "Adres")
+            _sub(adres2, "KodKraju", buyer.country_code or "PL")
+            _sub(adres2, "AdresL1", buyer_addr)
+
+        _sub(p2, "JST", "2")  # not a public finance sector entity
+        _sub(p2, "GV", "2")   # not a private individual
+
+        # ── Fa ────────────────────────────────────────────────────────────────
+        fa = _sub(root, "Fa")
+        _sub(fa, "KodWaluty", invoice.currency_code or "PLN")
+        _sub(fa, "P_1", str(invoice.issue_date))
+        if fa_meta.get("issue_place"):
+            _sub(fa, "P_1M", fa_meta["issue_place"])
+        _sub(fa, "P_2", invoice.invoice_number or "")
+        if invoice.sale_date:
+            _sub(fa, "P_6", str(invoice.sale_date))
+
+        # P_13 totals (standard VAT rates — have paired P_14)
+        for key in ("1", "2", "3"):
+            if key in p13_nets:
+                _sub(fa, f"P_13_{key}", _fmt(p13_nets[key]))
+                _sub(fa, f"P_14_{key}", _fmt(p13_vats.get(key, Decimal("0"))))
+
+        # P_13 totals (zero / exempt / special — no paired P_14)
+        for key in ("6_1", "6_2", "6_3", "7", "8", "9", "10", "11"):
+            tag = f"P_13_{key}"
+            if key in p13_nets:
+                _sub(fa, tag, _fmt(p13_nets[key]))
+
+        _sub(fa, "P_15", _fmt(invoice.gross_total))
+
+        # Exchange rate annotation (only when currency ≠ PLN and rate provided)
+        if invoice.currency_code and invoice.currency_code != "PLN" and invoice.exchange_rate:
+            _sub(fa, "KursWalutyZ", _fmt6(invoice.exchange_rate))
+
+        # ── Adnotacje ─────────────────────────────────────────────────────────
+        adn = _sub(fa, "Adnotacje")
+        _sub(adn, "P_16", "2")   # no self-billing
+        _sub(adn, "P_17", "2")   # no cash-accounting method
+        _sub(adn, "P_18", "2")   # no split payment
+        _sub(adn, "P_18A", "2")  # no mandatory split payment
+        # Zwolnienie: P_19=1 if zw lines present, else P_19N=1
+        zwol = _sub(adn, "Zwolnienie")
+        _sub(zwol, "P_19" if has_zw else "P_19N", "1")
+        # NoweSrodkiTransportu: P_22N=1 (not new transport means)
+        nst = _sub(adn, "NoweSrodkiTransportu")
+        _sub(nst, "P_22N", "1")
+        _sub(adn, "P_23", "2")  # not a tourist service
+        # PMarzy
+        pmarzy = _sub(adn, "PMarzy")
+        _sub(pmarzy, "P_PMarzyN", "1")
+
+        _sub(fa, "RodzajFaktury", "VAT")
+
+        # ── FaWiersz (invoice lines) ──────────────────────────────────────────
         for line in sorted(invoice.lines, key=lambda x: x.line_no):
-            lines_xml.append(
-                f"    <Line>\n"
-                f"      <LineNo>{line.line_no}</LineNo>\n"
-                f"      <ProductName>{xml_escape(line.product_name or '')}</ProductName>\n"
-                f"      <Quantity>{line.quantity}</Quantity>\n"
-                f"      <UnitPriceNet>{line.unit_price_net}</UnitPriceNet>\n"
-                f"      <VatCode>{xml_escape(line.vat_code or '')}</VatCode>\n"
-                f"      <VatRate>{line.vat_rate if line.vat_rate is not None else ''}</VatRate>\n"
-                f"      <NetAmount>{line.net_amount}</NetAmount>\n"
-                f"      <VatAmount>{line.vat_amount}</VatAmount>\n"
-                f"      <GrossAmount>{line.gross_amount}</GrossAmount>\n"
-                f"    </Line>"
-            )
+            fw = _sub(fa, "FaWiersz")
+            _sub(fw, "NrWierszaFa", str(line.line_no))
+            if line.product_name:
+                _sub(fw, "P_7", line.product_name)
+            if line.unit_code:
+                _sub(fw, "P_8A", line.unit_code)
+            _sub(fw, "P_8B", _fmt6(line.quantity))
+            _sub(fw, "P_9A", _fmt6(line.unit_price_net))
+            _sub(fw, "P_11", _fmt(line.net_amount))
+            vat_code_raw = (line.vat_code or "").strip()
+            p12_val = P12_MAP.get(vat_code_raw)
+            if p12_val:
+                _sub(fw, "P_12", p12_val)
+            # Per-line exchange rate (foreign currency invoices)
+            line_meta = line.line_metadata or {}
+            if line_meta.get("exchange_rate"):
+                _sub(fw, "KursWaluty", _fmt6(line_meta["exchange_rate"]))
+            elif invoice.currency_code and invoice.currency_code != "PLN" and invoice.exchange_rate:
+                _sub(fw, "KursWaluty", _fmt6(invoice.exchange_rate))
 
-        return (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            "<Invoice>\n"
-            "  <Header>\n"
-            f"    <InvoiceNumber>{xml_escape(invoice.invoice_number)}</InvoiceNumber>\n"
-            f"    <IssueDate>{invoice.issue_date}</IssueDate>\n"
-            f"    <Currency>{xml_escape(invoice.currency_code)}</Currency>\n"
-            f"    <SchemaVersion>{xml_escape(invoice.schema_version or 'FA(3)')}</SchemaVersion>\n"
-            "  </Header>\n"
-            "  <Seller>\n"
-            f"    <Name>{xml_escape(seller.party.name_full if seller and seller.party else '')}</Name>\n"
-            f"    <TaxId>{xml_escape(seller.party.tax_id if seller and seller.party.tax_id else '')}</TaxId>\n"
-            "  </Seller>\n"
-            "  <Buyer>\n"
-            f"    <Name>{xml_escape(buyer.party.name_full if buyer and buyer.party else '')}</Name>\n"
-            f"    <TaxId>{xml_escape(buyer.party.tax_id if buyer and buyer.party.tax_id else '')}</TaxId>\n"
-            "  </Buyer>\n"
-            "  <Totals>\n"
-            f"    <NetTotal>{invoice.net_total}</NetTotal>\n"
-            f"    <VatTotal>{invoice.vat_total}</VatTotal>\n"
-            f"    <GrossTotal>{invoice.gross_total}</GrossTotal>\n"
-            "  </Totals>\n"
-            "  <Lines>\n"
-            + "\n".join(lines_xml) + "\n"
-            "  </Lines>\n"
-            "</Invoice>\n"
+        # ── Platnosc ──────────────────────────────────────────────────────────
+        has_payment_info = (
+            invoice.due_date or invoice.payment_method or invoice.payment_account
         )
+        if has_payment_info:
+            platnosc = _sub(fa, "Platnosc")
+            if invoice.due_date:
+                tp = _sub(platnosc, "TerminPlatnosci")
+                _sub(tp, "Termin", str(invoice.due_date))
+            if invoice.payment_method:
+                _sub(platnosc, "FormaPlatnosci", str(invoice.payment_method))
+            if invoice.payment_account:
+                rb = _sub(platnosc, "RachunekBankowy")
+                _sub(rb, "NrRB", invoice.payment_account)
+                if fa_meta.get("payment_swift"):
+                    _sub(rb, "SWIFT", fa_meta["payment_swift"])
+                if fa_meta.get("payment_bank_name"):
+                    _sub(rb, "NazwaBanku", fa_meta["payment_bank_name"])
+
+        # ── WarunkiTransakcji ─────────────────────────────────────────────────
+        contract_date = fa_meta.get("contract_date")
+        contract_number = fa_meta.get("contract_number")
+        if contract_date or contract_number:
+            wt = _sub(fa, "WarunkiTransakcji")
+            umowy = _sub(wt, "Umowy")
+            if contract_date:
+                _sub(umowy, "DataUmowy", contract_date)
+            if contract_number:
+                _sub(umowy, "NrUmowy", contract_number)
+
+        # ── Stopka ────────────────────────────────────────────────────────────
+        footer_note = fa_meta.get("footer_note")
+        if footer_note:
+            stopka = _sub(root, "Stopka")
+            info = _sub(stopka, "Informacje")
+            _sub(info, "StopkaFaktury", footer_note)
+
+        xml_bytes = lxml_etree.tostring(
+            root, encoding="UTF-8", xml_declaration=True, pretty_print=True
+        )
+        return xml_bytes.decode("utf-8")
 
     @staticmethod
     def create_event(

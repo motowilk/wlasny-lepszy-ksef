@@ -5,13 +5,56 @@
     <h1>Faktura {{ invoice.invoice_number }}</h1>
     <div>
         <a class="btn secondary" href="/ui/invoices">Powrót</a>
+        <a class="btn" href="/ui/invoices/new?clone={{ invoice.id }}" style="margin-left:6px">Powtórz fakturę</a>
         {% if not invoice.approved_at %}
-        <form method="post" action="/ui/invoices/{{ invoice.id }}/approve" class="inline-form">
-            <button class="btn" type="submit">Akceptuj</button>
+        <form method="post" action="/ui/invoices/{{ invoice.id }}/validate-ksef" class="inline-form" style="margin-left:6px">
+            <button class="btn secondary" type="submit">Waliduj KSeF</button>
+        </form>
+        <form method="post" action="/ui/invoices/{{ invoice.id }}/approve" class="inline-form" style="margin-left:6px">
+            <button class="btn" type="submit">Akceptuj i wyślij do KSeF</button>
         </form>
         {% endif %}
     </div>
 </div>
+
+{% if approve_error %}
+<div class="alert alert-error" role="alert">
+    <strong>Błąd akceptacji:</strong> {{ approve_error }}
+</div>
+{% endif %}
+
+{% if validate_result %}
+<section class="card">
+    <h2>Wynik walidacji KSeF</h2>
+    {% if validate_result.valid %}
+    <p style="color:var(--color-success,#2d9e5a);font-weight:bold">✓ Faktura jest zgodna z FA(3) v1-0E</p>
+    {% else %}
+    <p style="color:var(--color-danger,#c0392b);font-weight:bold">✗ Faktura zawiera błędy</p>
+    {% endif %}
+
+    {% if validate_result.biz_errors %}
+    <h3>Błędy biznesowe</h3>
+    <ul>{% for e in validate_result.biz_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if validate_result.biz_warnings %}
+    <h3>Ostrzeżenia</h3>
+    <ul>{% for w in validate_result.biz_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if validate_result.xsd_errors %}
+    <h3>Błędy XSD</h3>
+    <ul>{% for e in validate_result.xsd_errors %}<li><code>{{ e }}</code></li>{% endfor %}</ul>
+    {% endif %}
+
+    {% if validate_result.xml_preview %}
+    <details style="margin-top:1rem">
+        <summary>Podgląd XML (pierwsze 2 KB)</summary>
+        <pre style="font-size:.75rem;overflow:auto;max-height:300px">{{ validate_result.xml_preview }}</pre>
+    </details>
+    {% endif %}
+</section>
+{% endif %}
 
 <div class="grid-two">
     <section class="card">
@@ -20,7 +63,9 @@
         <p><strong>Numer:</strong> {{ invoice.invoice_number }}</p>
         <p><strong>KSeF:</strong> {{ invoice.ksef_number or "-" }}</p>
         <p><strong>Data wystawienia:</strong> {{ invoice.issue_date }}</p>
-        <p><strong>Status KSeF:</strong> {{ invoice.ksef_status_code }}</p>
+        <p><strong>Status KSeF:</strong>
+            <span class="badge badge-ksef-{{ invoice.ksef_status_code | lower }}">{{ invoice.ksef_status_code }}</span>
+        </p>
         <p><strong>Status ERP:</strong> {{ invoice.erp_status }}</p>
         <p><strong>Netto:</strong> {{ invoice.net_total }}</p>
         <p><strong>VAT:</strong> {{ invoice.vat_total }}</p>
@@ -81,7 +126,7 @@
 </section>
 
 <section class="card">
-    <h2>Payloady</h2>
+    <h2>Payloady KSeF</h2>
     <table class="table">
         <thead>
             <tr>
@@ -97,7 +142,7 @@
                 <td>{{ payload.id }}</td>
                 <td>{{ payload.payload_type_code }}</td>
                 <td>{{ payload.content_format }}</td>
-                <td>{{ payload.content_sha256 or "-" }}</td>
+                <td title="{{ payload.content_sha256 or '' }}">{{ (payload.content_sha256 or "-")[:16] }}…</td>
             </tr>
         {% endfor %}
         </tbody>

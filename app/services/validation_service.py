@@ -1,7 +1,38 @@
+import logging
 from decimal import Decimal
+from pathlib import Path
 
 from app.db.models import Invoice
 from app.schemas.invoice import InvoiceValidateResponse
+
+logger = logging.getLogger(__name__)
+
+# ── KSeF XSD schema cache (loaded once at first use) ──────────────────────────
+_ksef_schema = None
+_ksef_schema_attempted = False
+
+
+def _load_ksef_schema():
+    """Load and cache the FA(3) XSD schema. Returns None if unavailable."""
+    global _ksef_schema, _ksef_schema_attempted
+    if _ksef_schema_attempted:
+        return _ksef_schema
+    _ksef_schema_attempted = True
+    try:
+        from lxml import etree  # noqa: PLC0415
+
+        schemas_dir = Path(__file__).parent.parent / "adapters" / "ksef" / "schemas"
+        xsd_path = schemas_dir / "schemat_FA3_v1-0E.xsd"
+        if not xsd_path.exists():
+            logger.warning("KSeF XSD schema file not found: %s", xsd_path)
+            return None
+        xsd_doc = etree.parse(str(xsd_path))
+        _ksef_schema = etree.XMLSchema(xsd_doc)
+        logger.info("KSeF XSD schema loaded from %s", xsd_path)
+    except Exception as exc:
+        logger.warning("Failed to load KSeF XSD schema: %s", exc)
+        _ksef_schema = None
+    return _ksef_schema
 
 
 class ValidationService:
@@ -76,3 +107,28 @@ class ValidationService:
 
         valid = len(errors) == 0
         return InvoiceValidateResponse(valid=valid, errors=errors, warnings=warnings)
+
+    @staticmethod
+    def validate_ksef_xml(xml_content: str) -> list[str]:
+        """Validate XML string against the KSeF FA(3) v1-0E XSD schema.
+
+        Returns a list of error strings (empty list = valid).
+        If the schema cannot be loaded, returns a single informational message.
+        """
+        try:
+            from lxml import etree  # noqa: PLC0415
+        except ImportError:
+            return ["lxml nie jest zainstalowane — walidacja XSD pominięta."]
+
+        schema = _load_ksef_schema()
+        if schema is None:
+            return ["Schemat XSD FA(3) niedostępny — walidacja XSD pominięta."]
+
+        try:
+            doc = etree.fromstring(xml_content.encode("utf-8"))
+        except etree.XMLSyntaxError as exc:
+            return [f"Błąd składni XML: {exc}"]
+
+        if not schema.validate(doc):
+            return [str(err) for err in schema.error_log]
+        return []

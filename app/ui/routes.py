@@ -1,8 +1,8 @@
 import io
 import secrets
 import uuid
-from datetime import datetime, timezone
-from decimal import InvalidOperation
+from datetime import date, datetime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request
@@ -41,6 +41,7 @@ from app.schemas.invoice import (
     PartyPayload,
 )
 from app.services.invoice_service import InvoiceService
+from app.services.validation_service import ValidationService
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 _UI_SESSION_NONCE_KEY = "ui_session_nonce"
@@ -441,70 +442,223 @@ def purchase_invoices_list(
 @router.get("/ui/invoices/new")
 def invoice_new_form(
     request: Request,
+    clone: int | None = None,
+    db: Session = Depends(get_db),
     current_user: AppUser = Depends(ui_require_roles("admin", "agent", "reviewer")),
 ):
+    prefill: dict = {}
+    if clone:
+        src = (
+            db.execute(
+                select(Invoice)
+                .options(
+                    joinedload(Invoice.lines),
+                    joinedload(Invoice.parties).joinedload(InvoiceParty.party),
+                )
+                .where(Invoice.id == clone)
+            )
+            .unique()
+            .scalar_one_or_none()
+        )
+        if src:
+            fa_meta = src.fa_metadata or {}
+            prefill = {
+                "invoice_number": src.invoice_number,
+                "issue_date": str(src.issue_date),
+                "issue_place": fa_meta.get("issue_place", ""),
+                "sale_date": str(src.sale_date) if src.sale_date else "",
+                "due_date": str(src.due_date) if src.due_date else "",
+                "currency_code": src.currency_code,
+                "exchange_rate": str(src.exchange_rate) if src.exchange_rate else "",
+                "payment_method": src.payment_method or "",
+                "payment_account": src.payment_account or "",
+                "payment_swift": fa_meta.get("payment_swift", ""),
+                "payment_bank_name": fa_meta.get("payment_bank_name", ""),
+                "contract_date": fa_meta.get("contract_date", ""),
+                "contract_number": fa_meta.get("contract_number", ""),
+                "footer_note": fa_meta.get("footer_note", ""),
+            }
+            for ip in src.parties:
+                party = ip.party
+                if not party:
+                    continue
+                addr_parts = [p for p in [party.street, party.city, party.postal_code] if p]
+                addr_str = ", ".join(addr_parts) or (party.extra_data or {}).get("address_l1", "")
+                if ip.role_code == "SELLER":
+                    prefill.update({
+                        "seller_name": party.name_full,
+                        "seller_nip": party.tax_id or "",
+                        "seller_country": party.country_code or "PL",
+                        "seller_address": addr_str,
+                    })
+                elif ip.role_code == "BUYER":
+                    if party.vat_eu_id:
+                        prefill.update({
+                            "buyer_vat_type": "EU",
+                            "buyer_eu_prefix": party.country_code or "",
+                            "buyer_eu_vat": party.vat_eu_id,
+                        })
+                    elif party.tax_id:
+                        prefill.update({"buyer_vat_type": "NIP", "buyer_nip": party.tax_id})
+                    else:
+                        prefill["buyer_vat_type"] = "NONE"
+                    prefill.update({
+                        "buyer_name": party.name_full,
+                        "buyer_country": party.country_code or "",
+                        "buyer_address": addr_str,
+                    })
+            lines_data = []
+            for line in sorted(src.lines, key=lambda l: l.line_no):
+                lm = line.line_metadata or {}
+                exr = lm.get("exchange_rate")
+                lines_data.append({
+                    "description": line.product_name,
+                    "unit": line.unit_code or "",
+                    "qty": str(line.quantity),
+                    "price": str(line.unit_price_net),
+                    "vat_code": line.vat_code or ("23" if line.vat_rate else "oo"),
+                    "exchange_rate": str(exr) if exr else "",
+                })
+            prefill["lines"] = lines_data
+
     return templates.TemplateResponse(
         "invoice_form.html",
         {
             "request": request,
             "current_user": current_user,
-            "invoice": None,
             "mode": "create",
+            "prefill": prefill,
         },
     )
 
 
 @router.post("/ui/invoices/new")
-def invoice_create_submit(
-    invoice_number: str = Form(...),
-    issue_date: str = Form(...),
-    seller_name: str = Form(...),
-    buyer_name: str = Form(...),
-    product_name: str = Form(...),
-    quantity: str = Form(...),
-    unit_price_net: str = Form(...),
-    vat_rate: str = Form(default="23"),
+async def invoice_create_submit(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(ui_require_roles("admin", "agent", "reviewer")),
 ):
-    from datetime import date
-    from decimal import Decimal
+    form = await request.form()
+
+    def _s(key: str, default: str = "") -> str:
+        return (form.get(key) or default).strip()
+
+    invoice_number = _s("invoice_number")
+    issue_date_str = _s("issue_date")
+    issue_place = _s("issue_place")
+    sale_date_str = _s("sale_date")
+    due_date_str = _s("due_date")
+    currency_code = _s("currency_code", "PLN") or "PLN"
+    exchange_rate_str = _s("exchange_rate")
+    payment_method = _s("payment_method") or None
+    payment_account = _s("payment_account") or None
+    payment_swift = _s("payment_swift")
+    payment_bank_name = _s("payment_bank_name")
+
+    seller_name = _s("seller_name")
+    seller_nip = _s("seller_nip") or None
+    seller_country = _s("seller_country", "PL") or "PL"
+    seller_address = _s("seller_address") or None
+
+    buyer_name = _s("buyer_name")
+    buyer_country = _s("buyer_country") or None
+    buyer_vat_type = _s("buyer_vat_type", "NIP")
+    buyer_nip = _s("buyer_nip") or None
+    buyer_eu_prefix = _s("buyer_eu_prefix") or None
+    buyer_eu_vat = _s("buyer_eu_vat") or None
+    buyer_address = _s("buyer_address") or None
+
+    contract_date_str = _s("contract_date")
+    contract_number = _s("contract_number")
+    footer_note = _s("footer_note")
+
+    line_count = int(_s("line_count", "0") or "0")
+
+    vat_rate_map: dict = {
+        "23": Decimal("23"), "8": Decimal("8"), "5": Decimal("5"),
+        "0": Decimal("0"), "oo": None, "np": None,
+    }
 
     try:
+        # Build lines
+        lines = []
+        for i in range(1, line_count + 1):
+            desc = _s(f"line_description_{i}")
+            if not desc:
+                continue
+            unit = _s(f"line_unit_{i}") or None
+            qty = _s(f"line_qty_{i}", "1") or "1"
+            price = _s(f"line_price_{i}", "0") or "0"
+            vat_code = _s(f"line_vat_{i}", "23")
+            exr = _s(f"line_exchange_rate_{i}") or None
+
+            lm = {"exchange_rate": exr} if exr else None
+            lines.append(
+                InvoiceLinePayload(
+                    line_no=i,
+                    product_name=desc,
+                    unit_code=unit,
+                    quantity=Decimal(qty),
+                    unit_price_net=Decimal(price),
+                    vat_rate=vat_rate_map.get(vat_code, Decimal("23")),
+                    vat_code=vat_code,
+                    line_metadata=lm,
+                )
+            )
+
+        # Build parties
+        seller_party = InvoicePartyPayload(
+            role_code="SELLER",
+            sequence_no=1,
+            party=PartyPayload(
+                name_full=seller_name,
+                tax_id=seller_nip,
+                country_code=seller_country,
+                street=seller_address,
+            ),
+        )
+
+        buyer_kwargs: dict = {"name_full": buyer_name, "country_code": buyer_country, "street": buyer_address}
+        if buyer_vat_type == "NIP":
+            buyer_kwargs["tax_id"] = buyer_nip
+        elif buyer_vat_type == "EU":
+            buyer_kwargs["vat_eu_id"] = buyer_eu_vat
+            buyer_kwargs["country_code"] = buyer_eu_prefix or buyer_country
+        buyer_party = InvoicePartyPayload(
+            role_code="BUYER",
+            sequence_no=1,
+            party=PartyPayload(**buyer_kwargs),
+        )
+
+        # Build fa_metadata
+        fa_meta: dict = {}
+        if issue_place:
+            fa_meta["issue_place"] = issue_place
+        if payment_swift:
+            fa_meta["payment_swift"] = payment_swift
+        if payment_bank_name:
+            fa_meta["payment_bank_name"] = payment_bank_name
+        if contract_date_str:
+            fa_meta["contract_date"] = contract_date_str
+        if contract_number:
+            fa_meta["contract_number"] = contract_number
+        if footer_note:
+            fa_meta["footer_note"] = footer_note
+
         payload = InvoiceCreateRequest(
             direction_code="SALE",
             invoice_kind_code="STANDARD",
             invoice_number=invoice_number,
-            issue_date=date.fromisoformat(issue_date),
-            parties=[
-                InvoicePartyPayload(
-                    role_code="SELLER",
-                    sequence_no=1,
-                    party=PartyPayload(
-                        name_full=seller_name,
-                        country_code="PL",
-                    ),
-                ),
-                InvoicePartyPayload(
-                    role_code="BUYER",
-                    sequence_no=1,
-                    party=PartyPayload(
-                        name_full=buyer_name,
-                        country_code="PL",
-                    ),
-                ),
-            ],
-            lines=[
-                InvoiceLinePayload(
-                    line_no=1,
-                    product_name=product_name,
-                    quantity=Decimal(quantity),
-                    unit_price_net=Decimal(unit_price_net),
-                    vat_rate=Decimal(vat_rate),
-                    vat_code=vat_rate,
-                    unit_code="szt",
-                )
-            ],
+            issue_date=date.fromisoformat(issue_date_str),
+            sale_date=date.fromisoformat(sale_date_str) if sale_date_str else None,
+            due_date=date.fromisoformat(due_date_str) if due_date_str else None,
+            currency_code=currency_code,
+            exchange_rate=Decimal(exchange_rate_str) if exchange_rate_str else None,
+            payment_method=payment_method,
+            payment_account=payment_account,
+            fa_metadata=fa_meta or None,
+            parties=[seller_party, buyer_party],
+            lines=lines,
         )
         invoice = InvoiceService.create_invoice(db, payload, actor_id=str(current_user.id))
     except (InvalidOperation, ValidationError, ValueError) as exc:
@@ -555,6 +709,7 @@ def invoice_detail(
 @router.post("/ui/invoices/{invoice_id}/approve")
 def invoice_approve(
     invoice_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(ui_require_roles("admin", "reviewer")),
 ):
@@ -568,12 +723,60 @@ def invoice_approve(
             actor_id=str(current_user.id),
         )
     except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="Nie udało się zaakceptować faktury.",
-        ) from exc
+        invoice = InvoiceService.get_invoice(db, invoice_id)
+        return templates.TemplateResponse(
+            "invoice_detail.html",
+            {
+                "request": request,
+                "current_user": current_user,
+                "invoice": invoice,
+                "approve_error": str(exc),
+            },
+            status_code=422,
+        )
 
     return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
+
+
+@router.post("/ui/invoices/{invoice_id}/validate-ksef")
+def invoice_validate_ksef(
+    invoice_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent", "reviewer")),
+):
+    """Generate FA(3) XML for the invoice and validate it against the KSeF XSD schema."""
+    invoice = InvoiceService.get_invoice(db, invoice_id)
+
+    # Business rules first
+    biz_result = ValidationService.validate_invoice(invoice)
+
+    # Then generate XML and run XSD validation
+    xsd_errors: list[str] = []
+    xml_preview: str | None = None
+    if biz_result.valid:
+        try:
+            xml_content = InvoiceService._generate_fa3_xml(invoice)
+            xml_preview = xml_content[:2000]  # first 2 KB for display
+            xsd_errors = ValidationService.validate_ksef_xml(xml_content)
+        except Exception as exc:
+            xsd_errors = [f"Błąd generowania XML: {exc}"]
+
+    return templates.TemplateResponse(
+        "invoice_detail.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "invoice": invoice,
+            "validate_result": {
+                "valid": biz_result.valid and len(xsd_errors) == 0,
+                "biz_errors": biz_result.errors,
+                "biz_warnings": biz_result.warnings,
+                "xsd_errors": xsd_errors,
+                "xml_preview": xml_preview,
+            },
+        },
+    )
 
 
 @router.get("/ui/accounting-batches")
