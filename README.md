@@ -1,6 +1,6 @@
 # Własny Lepszy KSeF
 
-Poniżej znajduje się uproszczona instrukcja pierwszego uruchomienia projektu. Zawiera tylko kroki operacyjne potrzebne do startu aplikacji lokalnie, bez opisu architektury i bez zawartości plików źródłowych.
+Poniżej znajduje się uproszczona instrukcja pierwszego uruchomienia projektu. Zawiera tylko kroki operacyjne potrzebne do startu aplikacji lokalnie, bez opisu architektury i bez zawartości plików źródłowych w dokumentacji.
 
 ## Założenia
 
