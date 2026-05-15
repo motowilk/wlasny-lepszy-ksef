@@ -4,9 +4,14 @@
 <div class="page-header">
     <h1>Faktura {{ invoice.invoice_number }}</h1>
     <div>
+        {% if invoice.direction_code == 'PURCHASE' %}
+        <a class="btn secondary" href="/ui/purchase-invoices">Powrót</a>
+        {% else %}
         <a class="btn secondary" href="/ui/invoices">Powrót</a>
         <a class="btn" href="/ui/invoices/new?clone={{ invoice.id }}" style="margin-left:6px">Powtórz fakturę</a>
-        {% if not invoice.approved_at %}
+        {% endif %}
+
+        {% if invoice.direction_code == 'SALE' and not invoice.approved_at %}
         <a class="btn secondary" href="/ui/invoices/{{ invoice.id }}/edit" style="margin-left:6px">Edytuj</a>
         <form method="post" action="/ui/invoices/{{ invoice.id }}/validate-ksef" class="inline-form" style="margin-left:6px">
             <button class="btn secondary" type="submit">Waliduj KSeF</button>
@@ -15,12 +20,55 @@
             <button class="btn" type="submit">Akceptuj i wyślij do KSeF</button>
         </form>
         {% endif %}
+
+        {# PURCHASE actions: qualify, reject, add to batch #}
+        {% if invoice.direction_code == 'PURCHASE' %}
+            {% if not invoice.accounting_qualified %}
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/qualify" class="inline-form" style="margin-left:6px">
+                <button class="btn" type="submit">Zakwalifikuj do księgowości</button>
+            </form>
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/reject-accounting" class="inline-form" style="margin-left:6px">
+                <button class="btn secondary" type="submit">Odrzuć z procesu</button>
+            </form>
+            {% endif %}
+            {% if invoice.accounting_qualified and not invoice.accounting_batch_id %}
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/add-to-batch" class="inline-form" style="margin-left:6px">
+                <button class="btn" type="submit">Dodaj do batcha</button>
+            </form>
+            {% endif %}
+        {% endif %}
+
+        {# SALE with KSEF_ACCEPTED can also be added to batch #}
+        {% if invoice.direction_code == 'SALE' and invoice.ksef_status_code == 'ACCEPTED' and not invoice.accounting_batch_id %}
+            {% if not invoice.accounting_qualified %}
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/qualify" class="inline-form" style="margin-left:6px">
+                <button class="btn" type="submit">Zakwalifikuj do księgowości</button>
+            </form>
+            {% endif %}
+            {% if invoice.accounting_qualified %}
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/add-to-batch" class="inline-form" style="margin-left:6px">
+                <button class="btn" type="submit">Dodaj do batcha</button>
+            </form>
+            {% endif %}
+        {% endif %}
     </div>
 </div>
 
 {% if approve_error %}
 <div class="alert alert-error" role="alert">
     <strong>Błąd akceptacji:</strong> {{ approve_error }}
+</div>
+{% endif %}
+
+{% if action_success %}
+<div class="alert alert-success" role="alert" style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:6px;margin-bottom:16px">
+    <strong>✓</strong> {{ action_success }}
+</div>
+{% endif %}
+
+{% if action_error %}
+<div class="alert alert-error" role="alert" style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:6px;margin-bottom:16px">
+    <strong>Błąd:</strong> {{ action_error }}
 </div>
 {% endif %}
 
@@ -62,15 +110,45 @@
         <h2>Nagłówek</h2>
         <p><strong>ID:</strong> {{ invoice.id }}</p>
         <p><strong>Numer:</strong> {{ invoice.invoice_number }}</p>
+        <p><strong>Kierunek:</strong>
+            {% if invoice.direction_code == 'PURCHASE' %}
+            <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#e3f2fd;color:#1565c0">ZAKUP</span>
+            {% else %}
+            <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#fce4ec;color:#c62828">SPRZEDAŻ</span>
+            {% endif %}
+        </p>
         <p><strong>KSeF:</strong> {{ invoice.ksef_number or "-" }}</p>
         <p><strong>Data wystawienia:</strong> {{ invoice.issue_date }}</p>
+        <p><strong>Data sprzedaży:</strong> {{ invoice.sale_date or "-" }}</p>
+        <p><strong>Data wpływu:</strong> {{ invoice.receive_date or "-" }}</p>
+        <p><strong>Termin płatności:</strong> {{ invoice.due_date or "-" }}</p>
         <p><strong>Status KSeF:</strong>
             <span class="badge badge-ksef-{{ invoice.ksef_status_code | lower }}">{{ invoice.ksef_status_code }}</span>
         </p>
-        <p><strong>Status ERP:</strong> {{ invoice.erp_status }}</p>
+        <p><strong>Status ERP:</strong> {{ invoice.erp_status or "-" }}</p>
+        {% if invoice.direction_code == 'PURCHASE' %}
+        <p><strong>Kwalifikacja:</strong>
+            {% if invoice.accounting_qualified is none %}—
+            {% elif invoice.accounting_qualified %}
+            <span style="color:#155724;font-weight:600">TAK</span>
+            {% else %}
+            <span style="color:#721c24;font-weight:600">NIE</span>
+            {% endif %}
+        </p>
+        <p><strong>Batch:</strong> {{ invoice.accounting_batch_id or "-" }}</p>
+        {% if invoice.accounting_notes %}
+        <p><strong>Notatki:</strong> {{ invoice.accounting_notes }}</p>
+        {% endif %}
+        {% endif %}
         <p><strong>Netto:</strong> {{ invoice.net_total|plnum }}</p>
         <p><strong>VAT:</strong> {{ invoice.vat_total|plnum }}</p>
         <p><strong>Brutto:</strong> {{ invoice.gross_total|plnum }}</p>
+        {% if invoice.payment_method %}
+        <p><strong>Forma płatności:</strong> {{ invoice.payment_method }}</p>
+        {% endif %}
+        {% if invoice.payment_account %}
+        <p><strong>Nr rachunku:</strong> {{ invoice.payment_account }}</p>
+        {% endif %}
     </section>
 
     <section class="card">

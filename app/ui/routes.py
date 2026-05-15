@@ -436,6 +436,8 @@ def invoices_list(
 @router.get("/ui/purchase-invoices")
 def purchase_invoices_list(
     request: Request,
+    fetch_result: int | None = None,
+    fetch_error: str | None = None,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
 ):
@@ -460,7 +462,37 @@ def purchase_invoices_list(
             "request": request,
             "current_user": current_user,
             "items": items,
+            "fetch_result": fetch_result,
+            "fetch_error": fetch_error,
         },
+    )
+
+
+@router.post("/ui/purchase-invoices/fetch-ksef")
+def purchase_invoices_fetch_ksef(
+    request: Request,
+    date_from: str = Form(...),
+    date_to: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(get_current_ui_user),
+):
+    from app.services.ksef_import_service import KsefImportService
+    from urllib.parse import urlencode
+
+    try:
+        imported = KsefImportService.fetch_and_import_purchases(
+            db=db,
+            date_from=f"{date_from}T00:00:00",
+            date_to=f"{date_to}T23:59:59",
+            actor_id=str(current_user.id),
+        )
+        params = urlencode({"fetch_result": len(imported)})
+    except Exception as exc:
+        params = urlencode({"fetch_error": str(exc)})
+
+    return RedirectResponse(
+        url=f"/ui/purchase-invoices?{params}",
+        status_code=303,
     )
 
 
@@ -911,6 +943,8 @@ async def invoice_edit_submit(
 def invoice_detail(
     invoice_id: int,
     request: Request,
+    action_success: str | None = None,
+    action_error: str | None = None,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
 ):
@@ -939,8 +973,89 @@ def invoice_detail(
             "request": request,
             "current_user": current_user,
             "invoice": invoice,
+            "action_success": action_success,
+            "action_error": action_error,
         },
     )
+
+
+@router.post("/ui/invoices/{invoice_id}/qualify")
+def invoice_qualify(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "accountant")),
+):
+    from urllib.parse import urlencode
+    from app.services.accounting_service import AccountingService
+
+    try:
+        AccountingService.qualify_purchase_invoice(
+            db=db,
+            invoice_id=invoice_id,
+            user_id=current_user.id,
+            accounting_qualified=True,
+            accounting_notes=None,
+        )
+        params = urlencode({"action_success": "Faktura zakwalifikowana do procesu księgowego."})
+    except ValueError as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+
+
+@router.post("/ui/invoices/{invoice_id}/reject-accounting")
+def invoice_reject_accounting(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "accountant")),
+):
+    from urllib.parse import urlencode
+    from app.services.accounting_service import AccountingService
+
+    try:
+        AccountingService.qualify_purchase_invoice(
+            db=db,
+            invoice_id=invoice_id,
+            user_id=current_user.id,
+            accounting_qualified=False,
+            accounting_notes="Odrzucono z procesu kosztowego.",
+        )
+        params = urlencode({"action_success": "Faktura odrzucona z procesu księgowego."})
+    except ValueError as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+
+
+@router.post("/ui/invoices/{invoice_id}/add-to-batch")
+def invoice_add_to_batch(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "accountant")),
+):
+    from urllib.parse import urlencode
+    from app.services.accounting_service import AccountingService
+
+    try:
+        invoice = db.get(Invoice, invoice_id)
+        if not invoice:
+            raise ValueError("Faktura nie istnieje.")
+        if not invoice.accounting_qualified:
+            raise ValueError("Faktura nie jest zakwalifikowana do procesu księgowego.")
+        if invoice.accounting_batch_id:
+            raise ValueError(f"Faktura jest już w batchu: {invoice.accounting_batch_id}")
+
+        batch = AccountingService.generate_monthly_purchase_batch(
+            db=db,
+            period_year=invoice.issue_date.year,
+            period_month=invoice.issue_date.month,
+            created_by=current_user.id,
+        )
+        params = urlencode({"action_success": f"Dodano do batcha {batch.batch_code}."})
+    except ValueError as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/approve")

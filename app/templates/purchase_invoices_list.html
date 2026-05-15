@@ -3,8 +3,62 @@
 {% block content %}
 <h1>Faktury zakupowe</h1>
 
+<section class="card" style="margin-bottom:16px;">
+    <form method="post" action="/ui/purchase-invoices/fetch-ksef" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+            <label style="font-size:12px;font-weight:600">Data od</label><br>
+            <input type="date" name="date_from" required style="padding:6px 10px;border:1px solid #ccc;border-radius:6px">
+        </div>
+        <div>
+            <label style="font-size:12px;font-weight:600">Data do</label><br>
+            <input type="date" name="date_to" required style="padding:6px 10px;border:1px solid #ccc;border-radius:6px">
+        </div>
+        <button type="submit" class="btn-detail" style="padding:8px 16px">Pobierz z KSeF</button>
+    </form>
+    {% if fetch_result is defined and fetch_result %}
+    <p style="margin-top:10px;color:#155724;font-weight:600">Zaimportowano {{ fetch_result }} faktur.</p>
+    {% endif %}
+    {% if fetch_error is defined and fetch_error %}
+    <p style="margin-top:10px;color:#721c24;font-weight:600">{{ fetch_error }}</p>
+    {% endif %}
+</section>
+
 <section class="card">
     <input type="text" id="purchase-filter" placeholder="Szukaj w tabeli..." style="width:100%;padding:8px 12px;margin-bottom:12px;border:1px solid #ccc;border-radius:6px;font-size:13px">
+    <div style="display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end;padding:12px 16px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef">
+        <fieldset style="border:none;padding:0;margin:0;display:flex;gap:8px;align-items:flex-end">
+            <legend style="font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Data wystawienia</legend>
+            <div>
+                <label for="filter-issue-from" style="font-size:10px;color:#6c757d">od</label>
+                <input type="date" id="filter-issue-from" style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box">
+            </div>
+            <div>
+                <label for="filter-issue-to" style="font-size:10px;color:#6c757d">do</label>
+                <input type="date" id="filter-issue-to" style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box">
+            </div>
+        </fieldset>
+        <fieldset style="border:none;padding:0;margin:0;display:flex;gap:8px;align-items:flex-end">
+            <legend style="font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Termin płatności</legend>
+            <div>
+                <label for="filter-due-from" style="font-size:10px;color:#6c757d">od</label>
+                <input type="date" id="filter-due-from" style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box">
+            </div>
+            <div>
+                <label for="filter-due-to" style="font-size:10px;color:#6c757d">do</label>
+                <input type="date" id="filter-due-to" style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box">
+            </div>
+        </fieldset>
+        <fieldset style="border:none;padding:0;margin:0;display:flex;flex-direction:column;align-items:flex-start">
+            <legend style="font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;letter-spacing:.5px;margin-bottom:20px">Kwalifikacja</legend>
+            <select id="filter-qualified" style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box;min-width:140px">
+                <option value="">Wszystkie</option>
+                <option value="tak">Zakwalifikowane</option>
+                <option value="nie">Niezakwalifikowane</option>
+                <option value="-">Brak decyzji</option>
+            </select>
+        </fieldset>
+        <button type="button" id="filter-clear" style="padding:6px 14px;font-size:12px;border:1px solid #dee2e6;border-radius:6px;background:#fff;color:#495057;cursor:pointer;font-weight:500;height:32px;box-sizing:border-box">Wyczyść</button>
+    </div>
     <div style="overflow-x:auto">
     <table class="table" id="purchase-table">
         <thead>
@@ -12,10 +66,11 @@
                 <th>ID</th>
                 <th>Numer</th>
                 <th>Sprzedawca</th>
-                <th>Nabywca</th>
+                <th>Data wyst.</th>
+                <th>Termin płatn.</th>
                 <th>Status KSeF</th>
-                <th>Status ERP</th>
                 <th>Kwalifikacja</th>
+                <th>Batch</th>
                 <th>Brutto</th>
                 <th>Akcje</th>
             </tr>
@@ -23,16 +78,15 @@
         <tbody>
         {% for item in items %}
             {% set seller_name = '' %}
-            {% set buyer_name = '' %}
             {% for p in item.parties %}
                 {% if p.role_code == 'SELLER' and p.party %}{% set seller_name = p.party.name_full or '' %}{% endif %}
-                {% if p.role_code == 'BUYER' and p.party %}{% set buyer_name = p.party.name_full or '' %}{% endif %}
             {% endfor %}
-            <tr>
+            <tr data-issue="{{ item.issue_date or '' }}" data-due="{{ item.due_date or '' }}" data-qualified="{% if item.accounting_qualified is none %}-{% elif item.accounting_qualified %}tak{% else %}nie{% endif %}">
                 <td>{{ item.id }}</td>
                 <td>{{ item.invoice_number }}</td>
                 <td>{{ seller_name }}</td>
-                <td>{{ buyer_name }}</td>
+                <td>{{ item.issue_date or '-' }}</td>
+                <td>{{ item.due_date or '-' }}</td>
                 <td>
                     {% if item.ksef_status_code in ('ACCEPTED', 'SENT') %}
                     <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#d4edda;color:#155724">{{ item.ksef_status_code }}</span>
@@ -41,13 +95,12 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if item.erp_status and item.erp_status in ('EXPORTED', 'SYNCED', 'ACCEPTED', 'KSEF_ACCEPTED') %}
-                    <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#d4edda;color:#155724">{{ item.erp_status }}</span>
-                    {% else %}
-                    <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#fff3cd;color:#856404">{{ item.erp_status or 'BRAK' }}</span>
+                    {% if item.accounting_qualified is none %}<span style="color:#888">—</span>
+                    {% elif item.accounting_qualified %}<span style="color:#155724;font-weight:600">TAK</span>
+                    {% else %}<span style="color:#721c24;font-weight:600">NIE</span>
                     {% endif %}
                 </td>
-                <td>{{ item.accounting_qualified if item.accounting_qualified is not none else '-' }}</td>
+                <td>{{ item.accounting_batch_id or '-' }}</td>
                 <td>{{ item.gross_total|plnum }}</td>
                 <td><a class="btn-detail" href="/ui/invoices/{{ item.id }}">Szczegóły</a></td>
             </tr>
@@ -58,12 +111,52 @@
 </section>
 
 <script>
-document.getElementById('purchase-filter').addEventListener('input', function() {
-    var filter = this.value.toLowerCase();
+(function() {
+    var textFilter = document.getElementById('purchase-filter');
+    var issueFrom = document.getElementById('filter-issue-from');
+    var issueTo = document.getElementById('filter-issue-to');
+    var dueFrom = document.getElementById('filter-due-from');
+    var dueTo = document.getElementById('filter-due-to');
+    var qualifiedFilter = document.getElementById('filter-qualified');
+    var clearBtn = document.getElementById('filter-clear');
     var rows = document.querySelectorAll('#purchase-table tbody tr');
-    rows.forEach(function(row) {
-        row.style.display = row.textContent.toLowerCase().includes(filter) ? '' : 'none';
+
+    function applyFilters() {
+        var text = textFilter.value.toLowerCase();
+        var iFrom = issueFrom.value;
+        var iTo = issueTo.value;
+        var dFrom = dueFrom.value;
+        var dTo = dueTo.value;
+        var qual = qualifiedFilter.value;
+
+        rows.forEach(function(row) {
+            var show = true;
+            if (text && !row.textContent.toLowerCase().includes(text)) show = false;
+            if (show && iFrom) { var d = row.dataset.issue; if (!d || d < iFrom) show = false; }
+            if (show && iTo) { var d = row.dataset.issue; if (!d || d > iTo) show = false; }
+            if (show && dFrom) { var d = row.dataset.due; if (!d || d < dFrom) show = false; }
+            if (show && dTo) { var d = row.dataset.due; if (!d || d > dTo) show = false; }
+            if (show && qual) { if (row.dataset.qualified !== qual) show = false; }
+            row.style.display = show ? '' : 'none';
+        });
+    }
+
+    textFilter.addEventListener('input', applyFilters);
+    issueFrom.addEventListener('change', applyFilters);
+    issueTo.addEventListener('change', applyFilters);
+    dueFrom.addEventListener('change', applyFilters);
+    dueTo.addEventListener('change', applyFilters);
+    qualifiedFilter.addEventListener('change', applyFilters);
+
+    clearBtn.addEventListener('click', function() {
+        textFilter.value = '';
+        issueFrom.value = '';
+        issueTo.value = '';
+        dueFrom.value = '';
+        dueTo.value = '';
+        qualifiedFilter.value = '';
+        applyFilters();
     });
-});
+})();
 </script>
 {% endblock %}

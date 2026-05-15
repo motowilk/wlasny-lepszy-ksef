@@ -15,3 +15,12 @@ class MockKsefClient(BaseKsefClient):
             "ksefNumber": f"MOCK-KSEF-{invoice_ref}",
             "status": {"code": 200, "description": "Accepted (mock)"},
         }
+
+    def fetch_invoices(
+        self,
+        date_from: str,
+        date_to: str,
+        subject_type: str = "subject2",
+    ) -> list[dict]:
+        """Mock: returns empty list (no invoices to fetch)."""
+        return []

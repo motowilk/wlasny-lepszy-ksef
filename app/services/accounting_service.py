@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from datetime import datetime, timezone
 
-from sqlalchemy import extract, select
+from sqlalchemy import extract, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -107,8 +107,11 @@ class AccountingService:
         if not invoice:
             raise ValueError(f"Invoice id={invoice_id} nie istnieje.")
 
-        if invoice.direction_code != "PURCHASE":
-            raise ValueError("Tylko faktury zakupowe mogą być kwalifikowane w tym procesie.")
+        # Allow PURCHASE invoices or SALE invoices that are KSEF_ACCEPTED
+        if invoice.direction_code == "SALE" and invoice.ksef_status_code != "ACCEPTED":
+            raise ValueError("Faktury sprzedażowe mogą być kwalifikowane tylko po akceptacji w KSeF.")
+        if invoice.direction_code not in ("PURCHASE", "SALE"):
+            raise ValueError("Nieobsługiwany kierunek faktury.")
 
         invoice.accounting_qualified = accounting_qualified
         invoice.accounting_marked_by = user_id
@@ -150,10 +153,10 @@ class AccountingService:
             batch = AccountingBatch(
                 batch_uuid=str(uuid.uuid4()),
                 batch_code=(
-                    f"PURCHASE-{period_year}-{period_month:02d}-"
+                    f"BATCH-{period_year}-{period_month:02d}-"
                     f"{uuid.uuid4().hex[:8].upper()}"
                 ),
-                batch_type="PURCHASE_MONTHLY",
+                batch_type="MONTHLY",
                 status="GENERATED",
                 period_year=period_year,
                 period_month=period_month,
@@ -167,7 +170,10 @@ class AccountingService:
             stmt = (
                 select(Invoice)
                 .where(
-                    Invoice.direction_code == "PURCHASE",
+                    or_(
+                        Invoice.direction_code == "PURCHASE",
+                        Invoice.direction_code == "SALE",
+                    ),
                     Invoice.accounting_qualified.is_(True),
                     Invoice.accounting_batch_id.is_(None),
                     extract("year", Invoice.issue_date) == period_year,

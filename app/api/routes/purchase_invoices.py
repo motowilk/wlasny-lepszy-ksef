@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import require_roles
@@ -89,4 +90,41 @@ def reject_purchase_invoice(
         raise HTTPException(
             status_code=400,
             detail="Nie udało się odrzucić faktury z procesu kosztowego.",
+        ) from exc
+
+
+class FetchKsefPurchasesRequest(BaseModel):
+    date_from: str  # ISO datetime, e.g. "2026-04-01T00:00:00"
+    date_to: str  # ISO datetime, e.g. "2026-04-30T23:59:59"
+
+
+class FetchKsefPurchasesResponse(BaseModel):
+    imported_count: int
+    imported_ids: list[int]
+
+
+@router.post("/fetch-from-ksef", response_model=FetchKsefPurchasesResponse)
+def fetch_purchases_from_ksef(
+    payload: FetchKsefPurchasesRequest,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(require_roles("admin", "agent")),
+) -> FetchKsefPurchasesResponse:
+    """Fetch purchase invoices from KSeF API and import them."""
+    from app.services.ksef_import_service import KsefImportService
+
+    try:
+        imported = KsefImportService.fetch_and_import_purchases(
+            db=db,
+            date_from=payload.date_from,
+            date_to=payload.date_to,
+            actor_id=str(current_user.id),
+        )
+        return FetchKsefPurchasesResponse(
+            imported_count=len(imported),
+            imported_ids=[inv.id for inv in imported],
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Błąd podczas pobierania faktur z KSeF: {exc}",
         ) from exc

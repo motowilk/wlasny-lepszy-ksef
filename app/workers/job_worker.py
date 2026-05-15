@@ -163,6 +163,29 @@ class JobWorker:
                 self._release_job_lock(job)
                 db.commit()
 
+            elif job.job_type == "FETCH_KSEF_PURCHASES":
+                from app.services.ksef_import_service import KsefImportService
+                req = job.request_payload or {}
+                date_from = req.get("date_from", "")
+                date_to = req.get("date_to", "")
+                if not date_from or not date_to:
+                    raise ValueError("FETCH_KSEF_PURCHASES wymaga date_from i date_to w request_payload.")
+                imported = KsefImportService.fetch_and_import_purchases(
+                    db=db,
+                    date_from=date_from,
+                    date_to=date_to,
+                    actor_id=job.locked_by,
+                )
+                job.status = "DONE"
+                job.finished_at = datetime.now(tz=timezone.utc)
+                job.response_payload = {
+                    "status": "PURCHASES_FETCHED",
+                    "imported_count": len(imported),
+                    "imported_ids": [inv.id for inv in imported],
+                }
+                self._release_job_lock(job)
+                db.commit()
+
             else:
                 raise ValueError(f"Nieobsługiwany job_type={job.job_type}")
 

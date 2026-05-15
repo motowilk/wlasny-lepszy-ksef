@@ -102,6 +102,75 @@ class RealKsefClient(BaseKsefClient):
         url = f"{self.base_url}/sessions/{session_ref}/invoices/{invoice_ref}"
         return self._get(url)
 
+    def fetch_invoices(
+        self,
+        date_from: str,
+        date_to: str,
+        subject_type: str = "subject2",
+    ) -> list[dict]:
+        """
+        Fetch invoices from KSeF using the query endpoint.
+
+        Uses POST /api/online/Query/Invoice/Sync to retrieve invoice metadata,
+        then fetches each invoice's XML via GET /api/online/Invoice/Get/{ksefNumber}.
+
+        Args:
+            date_from: ISO datetime string for range start.
+            date_to: ISO datetime string for range end.
+            subject_type: "subject1" (I am seller) or "subject2" (I am buyer/purchase).
+
+        Returns:
+            List of dicts: {"ksef_number": str, "xml_content": str}
+        """
+        self._ensure_authenticated()
+
+        # Query for invoice references in the date range
+        query_body = {
+            "queryCriteria": {
+                "subjectType": subject_type,
+                "type": "incremental",
+                "acquisitionTimestampThresholdFrom": date_from,
+                "acquisitionTimestampThresholdTo": date_to,
+            },
+        }
+
+        results: list[dict] = []
+        page_offset = 0
+        page_size = 100
+
+        while True:
+            query_body["queryCriteria"]["offset"] = page_offset
+            query_body["queryCriteria"]["limit"] = page_size
+
+            resp = self._post(
+                f"{self.base_url}/online/Query/Invoice/Sync",
+                query_body,
+            )
+
+            invoices_list = resp.get("invoiceHeaderList", [])
+            if not invoices_list:
+                break
+
+            for inv_header in invoices_list:
+                ksef_number = inv_header.get("ksefReferenceNumber")
+                if not ksef_number:
+                    continue
+
+                # Fetch the actual XML content
+                xml_resp = self._get_raw(
+                    f"{self.base_url}/online/Invoice/Get/{ksef_number}"
+                )
+                results.append({
+                    "ksef_number": ksef_number,
+                    "xml_content": xml_resp,
+                })
+
+            if len(invoices_list) < page_size:
+                break
+            page_offset += page_size
+
+        return results
+
     # ------------------------------------------------------------------ #
     # Authentication                                                        #
     # ------------------------------------------------------------------ #
@@ -290,6 +359,13 @@ class RealKsefClient(BaseKsefClient):
             resp = client.get(url, headers=self._auth_headers())
             resp.raise_for_status()
             return resp.json()
+
+    def _get_raw(self, url: str) -> str:
+        """GET returning raw text (for XML downloads)."""
+        with httpx.Client(timeout=self._HTTP_TIMEOUT) as client:
+            resp = client.get(url, headers=self._auth_headers())
+            resp.raise_for_status()
+            return resp.text
 
     def _post_anon(self, url: str, body: dict) -> dict:
         with httpx.Client(timeout=self._HTTP_TIMEOUT) as client:

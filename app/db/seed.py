@@ -81,6 +81,7 @@ def _seed_payload_types(db: Session) -> None:
         ("KSEF_XML", "Payload XML KSeF"),
         ("KSEF_REQUEST", "Request do KSeF"),
         ("KSEF_RESPONSE", "Response z KSeF"),
+        ("KSEF_XML_RECEIVED", "XML faktury pobranej z KSeF"),
         ("EMAIL_BODY", "Treść maila"),
     ]
     for code, name in items:
