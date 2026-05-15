@@ -1,4 +1,10 @@
 <img width="2912" height="1284" alt="image" src="https://github.com/user-attachments/assets/72832e1f-7572-45a8-84db-c72bb9203fc9" />
+Statusy faktury:
+<img width="2014" height="1924" alt="image" src="https://github.com/user-attachments/assets/ea5669ea-86be-47fd-9051-d88189e09da6" />
+Kontrahenci:
+<img width="2046" height="270" alt="image" src="https://github.com/user-attachments/assets/cf26e6bf-782e-4d57-92ec-9e89a7a81d7e" />
+Użytkownicy:
+<img width="2026" height="264" alt="image" src="https://github.com/user-attachments/assets/97f3c363-62e6-4a2e-8148-453915b86e9a" />
 
 
 # Własny Lepszy KSeF
