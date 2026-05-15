@@ -49,12 +49,16 @@ UI obejmuje obecnie:
 - listę batchy księgowych
 - szczegóły pojedynczego batcha księgowego
 - listę powiadomień
+- zarządzanie kontrahentami (lista i formularz dodawania/edycji)
+- zarządzanie użytkownikami (lista, formularz tworzenia, konfiguracja TOTP)
 
 Z poziomu UI można obecnie:
 
 - utworzyć nowy draft faktury sprzedażowej
 - obejrzeć szczegóły faktury wraz z historią zdarzeń
 - zaakceptować fakturę i przekazać ją do kolejki integracyjnej KSeF
+- przeglądać i dodawać kontrahentów
+- zarządzać użytkownikami i ich konfiguracją 2FA (TOTP)
 
 ### 3. Zarządzanie fakturami sprzedażowymi i ogólnym rejestrem faktur
 
@@ -94,6 +98,8 @@ Przed akceptacją faktura przechodzi walidację biznesową. Jeżeli walidacja za
 - oznacza dokument jako zaakceptowany biznesowo
 - tworzy zadanie integracyjne `SEND_TO_KSEF`
 
+Dodatkowo aplikacja waliduje wygenerowany XML dokumentu faktury względem schematu XSD FA(3) v1-0E (`schemat_FA(3)_v1-0E.xsd`), co pozwala wykryć błędy strukturalne przed wysyłką do KSeF.
+
 To oznacza, że akceptacja faktury nie tylko zmienia status w systemie, ale uruchamia też dalszy asynchroniczny workflow integracyjny.
 
 ### 5. Integracja z KSeF
@@ -126,6 +132,12 @@ Aktualnie dostępne funkcje to:
 - pobieranie szczegółów wyłącznie dla dokumentów typu `PURCHASE`
 - kwalifikowanie faktury zakupowej do procesu księgowego
 - odrzucanie faktury z procesu kosztowego
+- pobieranie faktur zakupowych z API KSeF dla wskazanego zakresu dat (`POST /api/purchase-invoices/fetch-from-ksef`)
+- import pojedynczego pliku XML FA(3) jako faktura zakupowa (`python scripts/import_purchase_xml.py <plik>`)
+
+Endpoint `fetch-from-ksef` przyjmuje parametry `date_from` i `date_to` (ISO datetime) i zwraca liczbę zaimportowanych dokumentów wraz z ich identyfikatorami. Import deduplikuje faktury na podstawie `ksef_number` i `invoice_number`.
+
+Parser XML rozpoznaje strukturę FA(3) v1-0E, w tym strony dokumentu (Podmiot1 = SELLER, Podmiot2 = BUYER) oraz pozycje z kodami VAT (23, 22, 8, 7, 5, 4, 3, 0, zw, oo, np, oss).
 
 Kwalifikacja faktury zakupowej wpływa na pola i statusy robocze, między innymi:
 
@@ -145,6 +157,8 @@ Dostępne możliwości:
 - zmiana statusu księgowego faktury
 - zapis notatek księgowych
 - oznaczanie kwalifikacji księgowej dokumentu
+- kwalifikacja pojedynczej faktury do batcha księgowego (`POST /api/invoices/{id}/qualify`)
+- dodanie pojedynczej faktury do istniejącego batcha miesięcznego (`POST /api/invoices/{id}/add-to-batch`)
 - generowanie miesięcznych batchy księgowych dla zakwalifikowanych faktur zakupowych
 - listowanie batchy księgowych
 - pobieranie szczegółów batcha księgowego
@@ -172,7 +186,7 @@ Generowanie batcha miesięcznego powoduje:
 
 ### 8. Powiadomienia
 
-System posiada moduł powiadomień oparty o log zdarzeń i wysyłkę e-mail.
+System posiada moduł powiadomień oparty o log zdarzeń i wysyłkę e-mail lub Slack.
 
 Aktualnie wspierane funkcje:
 
@@ -180,6 +194,11 @@ Aktualnie wspierane funkcje:
 - ręczne wysłanie wskazanego powiadomienia
 - listowanie historii powiadomień
 - automatyczne tworzenie powiadomień po zaksięgowaniu faktury
+
+Kanały wysyłki:
+
+- **E-mail** (`EmailNotificationAdapter`) — obsługa SMTP z automatycznym rozpoznawaniem trybu szyfrowania: port 465 (implicit TLS/SMTPS), port 587 (STARTTLS), port 25 (plain z upgrade do TLS)
+- **Slack** (`SlackNotificationAdapter`) — integracja z kanałami Slack
 
 Powiadomienia zawierają co najmniej:
 
@@ -236,8 +255,8 @@ To pozwala analizować historię dokumentu zarówno z perspektywy biznesowej, ja
 
 Aplikacja posiada dwa sposoby uruchamiania obsługi zadań w tle:
 
-- worker działający w pętli i stale pobierający kolejne zadania z bazy
-- scheduler APScheduler wywołujący przetwarzanie zadania w stałym interwale
+- **Scheduler** (klasa `Scheduler` w `app/workers/scheduler.py`) — główny proces przetwarzający, oparty o APScheduler, cyklicznie pobierający i obsługujący zadania z bazy w konfigurowalnym interwale (`SCHEDULER_INTERVAL`, domyślnie 180 sekund)
+- **job_worker** (`app/workers/job_worker.py`) — shim kompatybilności wstecznej, reeksportujący klasę `Scheduler`
 
 Obsługiwane typy zadań obejmują obecnie:
 
@@ -245,13 +264,16 @@ Obsługiwane typy zadań obejmują obecnie:
 - `POLL_KSEF_STATUS`
 - `SEND_BOOKED_NOTIFICATION`
 - `SEND_ACCOUNTING_BATCH`
+- `FETCH_KSEF_PURCHASES`
 
-Worker:
+Mechanizm przetwarzania:
 
-- pobiera tylko zadania o statusie `NEW`
-- oznacza je jako `PROCESSING`
-- zapisuje metadane blokady roboczej
+- Scheduler pobiera zadania o statusie `NEW` z blokadą na poziomie wiersza (`skip_locked`), co pozwala na bezpieczne uruchamianie wielu instancji
+- oznacza zadania jako `PROCESSING` z metadanymi blokady roboczej
 - kończy zadanie statusem `DONE` albo `FAILED`
+- retry z wykładniczym backoffem: `delay = min(300, 5 × 2^(attempts−1))`
+- monitorowanie heartbeat: Scheduler zapisuje w tabeli `worker_heartbeat` bieżący stan (faza: `idle`/`processing`/`cooldown`), ID i typ aktualnie przetwarzanego zadania oraz listę bieżących zadań w formacie JSON dla UI
+- stale śledzone sekundy: `SCHEDULER_STALE_SECONDS` kontroluje próg uznania workera za nieaktywnego
 
 ### 13. Endpointy systemowe i developerskie
 
@@ -274,6 +296,15 @@ Najważniejszy obecnie scenariusz działania aplikacji wygląda tak:
 6. W trybie `mock` faktura otrzymuje numer KSeF od razu, a w trybie `live` system przechodzi przez polling statusu.
 7. Po dalszej obsłudze księgowej dokument może otrzymać status `booked`, co tworzy zadanie wysyłki powiadomienia.
 8. Dla faktur zakupowych możliwe jest dodatkowo kwalifikowanie do batcha księgowego i wysyłka informacji o batchu.
+
+Drugi kluczowy scenariusz — import faktur zakupowych:
+
+1. Użytkownik lub harmonogram wywołuje pobranie faktur z KSeF API dla zakresu dat.
+2. System pobiera dokumenty XML z KSeF i parsuje je zgodnie ze schematem FA(3) v1-0E.
+3. Każdy dokument jest deduplikowany po `ksef_number` i `invoice_number`.
+4. Nowe faktury zakupowe są tworzone z pełną strukturą (strony, pozycje, sumy VAT) i statusem `ACCEPTED`.
+5. Alternatywnie, pojedynczy plik XML może być zaimportowany skryptem `import_purchase_xml.py`.
+6. Zaimportowane faktury zakupowe przechodzą dalej przez proces kwalifikacji i batchowania księgowego.
 
 
 ## Instalacja i konfiguracja
@@ -781,6 +812,8 @@ LOG_DIR=logs
 # Worker tuning (opcjonalne)
 WORKER_POLL_INTERVAL=5    # opóźnienie bezczynnego job_worker między sprawdzeniami kolejki (sekundy)
 SCHEDULER_INTERVAL=10     # interwał schedulera APScheduler (sekundy)
+SCHEDULER_STALE_SECONDS=600  # próg uznania workera za nieaktywnego (sekundy)
+UI_SESSION_MAX_AGE=43200  # czas życia sesji UI w sekundach (domyślnie 12h)
 
 ADMIN_DEFAULT_PASSWORD=<haslo_dla_uzytkownika_admin>
 ```
@@ -822,11 +855,15 @@ Migracje tworzą lub rozszerzają następujące komponenty bazy:
   - powiązanie z jednostkami (`related_entity_type`, `related_entity_id`)
   - blokady robocze (`locked_by`, `locked_at`)
 - `ksef_session` — sesje integracyjne z systemem KSeF
+- `ksef_session_invoice` — powiązanie faktur z sesjami KSeF (kody przetwarzania, referencje batchowe)
 
 **Tabele procesów księgowych i powiadomień:**
 - `accounting_batch` — okresy zbiorcze dla batch processing (np. faktury zakupowe miesięczne)
 - `accounting_batch_invoice` — powiązanie faktur z batchami księgowymi
 - `notification_log` — rejestr wszystkich wysyłanych powiadomień (e-mail, Slack) z statusami i payload'ami
+
+**Tabele monitorowania:**
+- `worker_heartbeat` — monitorowanie stanu workerów z fazami (`idle`/`processing`/`cooldown`), bieżącym zadaniem i listą zadań JSON dla UI
 
 **Tabele słownikowe:**
 - `party` — słownik stron dokumentów
@@ -914,7 +951,9 @@ Te procesy nie są wymagane do samego uruchomienia interfejsu WWW, ale są potrz
 
 Worker kolejek:
 
-Ten proces działa w pętli i pobiera z bazy kolejne zadania integracyjne ze statusem `NEW`. Obsługuje między innymi wysyłkę do KSeF, odpytywanie o status KSeF oraz wysyłkę powiadomień. Gdy kolejka jest pusta, czeka `WORKER_POLL_INTERVAL` sekund (domyślnie 5) przed kolejnym sprawdzeniem.
+Ten proces działa w pętli i pobiera z bazy kolejne zadania integracyjne ze statusem `NEW`. Obsługuje między innymi wysyłkę do KSeF, odpytywanie o status KSeF, import faktur zakupowych oraz wysyłkę powiadomień. Gdy kolejka jest pusta, czeka `WORKER_POLL_INTERVAL` sekund (domyślnie 5) przed kolejnym sprawdzeniem.
+
+> **Uwaga:** `job_worker.py` jest shimem kompatybilności wstecznej — reeksportuje klasę `Scheduler`. Zalecany sposób uruchamiania to przez moduł schedulera.
 
 ```bash
 python3 -m app.workers.job_worker
@@ -922,7 +961,7 @@ python3 -m app.workers.job_worker
 
 Scheduler:
 
-Ten proces uruchamia harmonogram APScheduler, który cyklicznie wywołuje przetwarzanie kolejki zadań. To alternatywa dla ciągle działającego workera, gdy chcesz uruchamiać obsługę zadań w interwale czasowym. Interwał kontrolowany jest przez `SCHEDULER_INTERVAL` (domyślnie 10 sekund).
+Ten proces uruchamia harmonogram APScheduler, który cyklicznie wywołuje przetwarzanie kolejki zadań. Wykorzystuje blokadę wierszy (`skip_locked`), co pozwala na bezpieczne uruchamianie wielu instancji. Interwał kontrolowany jest przez `SCHEDULER_INTERVAL` (domyślnie 10 sekund). Scheduler zapisuje heartbeat do bazy danych, co umożliwia monitorowanie stanu workera z poziomu UI.
 
 ```bash
 python3 -m app.workers.scheduler
@@ -982,6 +1021,30 @@ Minimalny zestaw testów regresyjnych obejmuje walidację wyliczeń faktur, logi
 python3 -m pytest tests
 ```
 
+### Pokrycie testowe
+
+Testy regresyjne znajdują się w katalogu `tests/` i obejmują:
+
+| Plik | Zakres |
+| --- | --- |
+| `test_invoice_service.py` | Wyliczenia kwot linii faktur, rabatów i VAT (testy parametryzowane) |
+| `test_ksef_import.py` | Parsowanie XML FA(3) v1-0E — numer faktury, daty, strony, pozycje, kody VAT |
+| `test_job_worker.py` | Logika przetwarzania zadań w tle: claimowanie, przejścia statusów, retry |
+| `test_schema_constraints.py` | Walidacja constraintów schematu bazy danych |
+| `test_security_review.py` | Testy bezpieczeństwa aplikacji |
+
+### Migracje Alembic
+
+Migracje znajdują się w `alembic/versions/`:
+
+| Migracja | Opis |
+| --- | --- |
+| `20260514_0001` | Dodanie CASCADE FK dla `invoice_party.party_id`, unique constraint dla batch invoice |
+| `20260514_0002` | Utworzenie tabeli `notification_log`, dodanie `totp_secret` do `app_user` |
+| `20260514_0003` | Utworzenie tabeli `worker_heartbeat` z indeksem na `worker_id` |
+| `20260515_0001` | Dodanie unique constraint na `invoice.invoice_number` |
+| `20260515_0002` | Dodanie kolumn `phase` i `current_jobs_json` do `worker_heartbeat` |
+
 ## Schemat bazy danych v1
 
 Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP. Po uruchomieniu migracji Alembic zawiera następujące komponenty:
@@ -993,6 +1056,7 @@ Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP
 | `app_user` | Konta użytkowników aplikacji z hasłami (bcrypt_sha256), statusami, metadanymi i opcjonalnym sekretem TOTP (`totp_secret`) |
 | `app_role` | Role systemowe: `admin`, `agent`, `reviewer`, `accountant`, `viewer` |
 | `app_user_role` | Powiązania: które role mają konkretni użytkownicy |
+| `worker_heartbeat` | Stan workerów: heartbeat, faza, bieżące zadania |
 
 ### Rejestry dokumentów
 
@@ -1013,7 +1077,8 @@ Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP
 | `invoice_payload` | Payloady XML faktury i odpowiedzi z KSeF |
 | `invoice_event` | Pełna historia zdarzeń: tworzenie, edycja, akceptacja, wysyłka, notyfikacje |
 | `ksef_session` | Sesje integracyjne z systemem KSeF |
-| `integration_job` | Kolejka asynchronicznych zadań: wysyłka, polling, notyfikacje |
+| `ksef_session_invoice` | Powiązanie faktur z sesjami KSeF (kody przetwarzania) |
+| `integration_job` | Kolejka asynchronicznych zadań: wysyłka, polling, import, notyfikacje |
 
 ### Procesy księgowe
 
@@ -1022,6 +1087,12 @@ Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP
 | `accounting_batch` | Okresy zbiorcze dla batch processing (np. faktury zakupowe miesięczne) |
 | `accounting_batch_invoice` | Fakty: które faktury należą do które batcha |
 | `notification_log` | Historia wysyłania powiadomień (e-mail, Slack) z statusami |
+
+### Monitorowanie
+
+| Tabela | Zawartość |
+| --- | --- |
+| `worker_heartbeat` | Stan workerów: heartbeat, faza (idle/processing/cooldown), bieżące zadania JSON |
 
 ### Słowniki referencyjne
 
