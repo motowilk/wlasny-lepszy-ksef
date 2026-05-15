@@ -93,7 +93,7 @@ def create_user(
 @router.get("/roles", response_model=list[RoleRead])
 def list_roles(
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "viewer", "reviewer", "accountant")),
+    _: AppUser = Depends(require_roles("admin", "viewer", "reviewer", "owner")),
 ) -> list[RoleRead]:
     roles = db.execute(select(AppRole).order_by(AppRole.role_code)).scalars().all()
     return [RoleRead.model_validate(role, from_attributes=True) for role in roles]

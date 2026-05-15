@@ -2,42 +2,41 @@
 
 ## Czym jest ta aplikacja?
 
-**Własny Lepszy KSeF** to lokalny system ERP do obsługi obiegu faktur zintegrowany z Krajowym Systemem e-Faktur (KSeF). Aplikacja zastępuje ręczne logowanie do portalu MF i manualne zarządzanie dokumentami — daje firmie własny, kontrolowany punkt dostępu do KSeF z pełnym workflow księgowym.
+**Własny Lepszy KSeF** to lokalny system do obsługi obiegu faktur zintegrowany z Krajowym Systemem e-Faktur (KSeF). Aplikacja służy właścicielowi firmy lub wyznaczonemu pracownikowi do wystawiania faktur sprzedażowych, rejestracji ich w KSeF oraz pobierania i akceptowania do księgowania kosztowego faktur zakupowych. Zakwalifikowane faktury są zbierane w batche miesięczne i wysyłane do zewnętrznego biura księgowego.
 
 ## Dla kogo i po co?
 
-Aplikacja jest przeznaczona dla małej lub średniej firmy (lub biura rachunkowego), która:
+Aplikacja jest przeznaczona dla właściciela małej lub średniej firmy (lub wyznaczonego pracownika), który:
 
 - chce mieć **własny rejestr faktur** sprzedażowych i zakupowych z pełną historią zmian
 - potrzebuje **automatycznej wysyłki faktur do KSeF** bez ręcznego wklejania XML-i w portal MF
-- chce **importować faktury zakupowe z KSeF** i prowadzić na nich proces kwalifikacji księgowej
+- chce **importować faktury zakupowe z KSeF** i decydować, które trafiają do biura księgowego
 - potrzebuje **śladu audytowego** — kto, kiedy, co zrobił z dokumentem
-- chce **powiadomień e-mail/Slack** o zaksięgowanych fakturach i batchach
-- potrzebuje podziału ról — agent AI tworzy drafty, reviewer akceptuje, księgowy kwalifikuje i batchuje
+- chce **powiadomień e-mail/Slack** o wysłanych batchach do biura księgowego
+- potrzebuje prostego podziału ról — agent AI tworzy drafty, reviewer akceptuje, właściciel kwalifikuje i wysyła do biura
 
 ## Jak wygląda miesiąc pracy z aplikacją?
 
 ### Tydzień 1–4: codzienne operacje
 
 **Faktury sprzedażowe (codziennie):**
-1. Agent lub użytkownik tworzy draft faktury sprzedażowej (ręcznie w UI lub przez API).
+1. Właściciel lub agent tworzy draft faktury sprzedażowej (ręcznie w UI lub przez API).
 2. System wylicza kwoty, VAT, sumy.
-3. Reviewer sprawdza i akceptuje fakturę.
+3. Właściciel sprawdza i akceptuje fakturę.
 4. W tle Scheduler wysyła XML do KSeF i czeka na potwierdzenie numeru KSeF.
 5. Faktura otrzymuje oficjalny numer KSeF — gotowe.
 
 **Faktury zakupowe (codziennie lub co kilka dni):**
-1. Scheduler lub użytkownik odpala import faktur zakupowych z KSeF za ostatnie dni.
+1. Scheduler lub właściciel odpala import faktur zakupowych z KSeF za ostatnie dni.
 2. System parsuje XML-e, deduplikuje i tworzy faktury zakupowe w rejestrze.
-3. Księgowy przegląda nowe faktury zakupowe, kwalifikuje je do procesu księgowego lub odrzuca.
+3. Właściciel przegląda nowe faktury zakupowe, kwalifikuje je do wysłania do biura księgowego lub odrzuca.
 
-### Koniec miesiąca: zamknięcie okresu
+### Koniec miesiąca: wysyłka do biura księgowego
 
-1. Księgowy zmienia statusy zakwalifikowanych faktur: `new` → `verified` → `posted` → `booked`.
-2. Po zaksięgowaniu system automatycznie tworzy powiadomienie e-mail.
-3. Księgowy generuje **batch miesięczny** — system zbiera wszystkie zakwalifikowane faktury zakupowe z danego miesiąca w jedną paczkę.
-4. Batch dostaje kod (np. `PURCHASE_2026_05`), jest wysyłany jako powiadomienie do systemu ERP lub zespołu.
-5. Faktury w batchu zmieniają status ERP na `ACCOUNTING_BATCHED`.
+1. Właściciel generuje **batch miesięczny** — system zbiera wszystkie zakwalifikowane faktury z danego miesiąca w jedną paczkę.
+2. Batch dostaje kod (np. `BATCH-2026-05-A1B2C3D4`) i jest wysyłany do biura księgowego.
+3. Faktury w batchu zmieniają status na `sent_to_office`.
+4. Biuro księgowe otrzymuje powiadomienie i księguje faktury w swoich systemach.
 
 ### Ciągłe w tle:
 
@@ -52,9 +51,9 @@ Aplikacja jest przeznaczona dla małej lub średniej firmy (lub biura rachunkowe
 | Ręczne logowanie do portalu KSeF | Automatyczna wysyłka i polling w tle |
 | Excel z listą faktur zakupowych | Rejestr z importem z KSeF, filtrami, statusami |
 | Brak historii zmian | Pełny audit trail z eventami |
-| Brak procesu kwalifikacji | Workflow: draft → review → approve → KSeF → booked |
-| Ręczne informowanie księgowego | Automatyczne powiadomienia e-mail/Slack |
-| Brak batchowania | Miesięczne paczki księgowe z jednym kliknięciem |
+| Brak procesu kwalifikacji | Workflow: draft → review → approve → KSeF → biuro |
+| Ręczne kompletowanie faktur dla biura | Automatyczne batche miesięczne z jednym kliknięciem |
+| Brak potwierdzenia wysyłki | Statusy i powiadomienia e-mail/Slack |
 
 <img width="2912" height="1284" alt="image" src="https://github.com/user-attachments/assets/72832e1f-7572-45a8-84db-c72bb9203fc9" />
 Statusy faktury:
@@ -82,7 +81,7 @@ Po skonfigurowaniu środowiska aplikacja udostępnia kompletny lokalny system do
 - Hasła są przechowywane jako hashe `bcrypt_sha256`; stare hashe `bcrypt` są rozpoznawane i weryfikowane (wsteczna kompatybilność).
 - Po poprawnym logowaniu aktualizowana jest data ostatniego logowania użytkownika.
 - Dostęp do operacji jest ograniczany rolami systemowymi.
-- Obsługiwane role: `admin`, `agent`, `reviewer`, `accountant`, `viewer`.
+- Obsługiwane role: `admin`, `agent`, `reviewer`, `owner`, `viewer`.
 - Konto `admin` jest tworzone skryptem inicjalizacyjnym na podstawie `ADMIN_DEFAULT_PASSWORD` z `.env`.
 
 **Konfiguracja 2FA (TOTP):**
@@ -184,7 +183,7 @@ Aktualnie dostępne funkcje to:
 
 - listowanie faktur zakupowych
 - pobieranie szczegółów wyłącznie dla dokumentów typu `PURCHASE`
-- kwalifikowanie faktury zakupowej do procesu księgowego
+- kwalifikowanie faktury zakupowej do wysłania do biura księgowego
 - odrzucanie faktury z procesu kosztowego
 - pobieranie faktur zakupowych z API KSeF dla wskazanego zakresu dat (`POST /api/purchase-invoices/fetch-from-ksef`)
 - import pojedynczego pliku XML FA(3) jako faktura zakupowa (`python scripts/import_purchase_xml.py <plik>`)
@@ -196,47 +195,46 @@ Parser XML rozpoznaje strukturę FA(3) v1-0E, w tym strony dokumentu (Podmiot1 =
 Kwalifikacja faktury zakupowej wpływa na pola i statusy robocze, między innymi:
 
 - `accounting_qualified`
+- `accounting_status`
 - `accounting_notes`
 - `review_status`
 - `erp_status`
 
-Pozytywna kwalifikacja ustawia dokument jako gotowy do dalszego procesu księgowego, a negatywna blokuje go w obiegu.
+Pozytywna kwalifikacja ustawia dokument jako gotowy do wysłania do biura księgowego w ramach batcha miesięcznego. Negatywna kwalifikacja blokuje dokument i oznacza go jako odrzucony.
 
-### 7. Proces księgowy i batchowanie
+### 7. Batchowanie i wysyłka do biura księgowego
 
-Aplikacja posiada wydzielony moduł księgowy dla dalszej obsługi faktur, głównie zakupowych.
+Aplikacja posiada wydzielony moduł przygotowania dokumentów do wysyłki do zewnętrznego biura księgowego.
 
 Dostępne możliwości:
 
-- zmiana statusu księgowego faktury
-- zapis notatek księgowych
-- oznaczanie kwalifikacji księgowej dokumentu
-- kwalifikacja pojedynczej faktury do batcha księgowego (`POST /api/invoices/{id}/qualify`)
-- dodanie pojedynczej faktury do istniejącego batcha miesięcznego (`POST /api/invoices/{id}/add-to-batch`)
-- generowanie miesięcznych batchy księgowych dla zakwalifikowanych faktur zakupowych
-- listowanie batchy księgowych
-- pobieranie szczegółów batcha księgowego
+- kwalifikacja faktury do wysyłki (`POST /api/invoices/{id}/qualify`)
+- dodanie pojedynczej faktury do batcha miesięcznego (`POST /api/invoices/{id}/add-to-batch`)
+- generowanie miesięcznych batchy dla zakwalifikowanych faktur (sprzedażowych i zakupowych)
+- listowanie batchy
+- pobieranie szczegółów batcha
+- usuwanie faktury z batcha (przed wysyłką)
 
-Obsługiwane statusy księgowe obejmują obecnie:
+Obsługiwane statusy procesu (`accounting_status`):
 
-- `new`
-- `verified`
-- `posted`
-- `booked`
-- `cancelled`
-
-Po ustawieniu statusu `booked` aplikacja:
-
-- oznacza dokument jako zakończony po stronie ERP
-- zapisuje odpowiedni event
-- tworzy zadanie `SEND_BOOKED_NOTIFICATION`
+- `new` — nowa faktura, nie podjęto decyzji
+- `qualified` — zakwalifikowana do wysyłki do biura
+- `batched` — dodana do batcha miesięcznego
+- `sent_to_office` — batch z tą fakturą został wysłany do biura księgowego
+- `rejected` — odrzucona z procesu kosztowego
 
 Generowanie batcha miesięcznego powoduje:
 
-- wybór zakwalifikowanych faktur zakupowych bez przypisanego batcha
-- przypisanie ich do nowego batcha
-- zmianę statusu ERP dokumentów na `ACCOUNTING_BATCHED`
+- wybór zakwalifikowanych faktur bez przypisanego batcha
+- przypisanie ich do nowego lub istniejącego batcha dla danego okresu
+- zmianę statusu dokumentów na `batched`
 - utworzenie zadania `SEND_ACCOUNTING_BATCH`
+
+Po wysłaniu batcha do biura księgowego:
+
+- status batcha zmienia się na `SENT`
+- statusy wszystkich faktur w batchu zmieniają się na `sent_to_office`
+- biuro księgowe otrzymuje powiadomienie i może zaksięgować dokumenty w swoich systemach
 
 ### 8. Powiadomienia
 
@@ -247,7 +245,7 @@ Aktualnie wspierane funkcje:
 - utworzenie powiadomienia dla faktury
 - ręczne wysłanie wskazanego powiadomienia
 - listowanie historii powiadomień
-- automatyczne tworzenie powiadomień po zaksięgowaniu faktury
+- automatyczne tworzenie powiadomień po wysłaniu batcha do biura księgowego
 
 Kanały wysyłki:
 
@@ -316,7 +314,7 @@ Obsługiwane typy zadań obejmują obecnie:
 
 - `SEND_TO_KSEF`
 - `POLL_KSEF_STATUS`
-- `SEND_BOOKED_NOTIFICATION`
+- `SEND_BOOKED_NOTIFICATION` (legacy, nie tworzony w nowych procesach)
 - `SEND_ACCOUNTING_BATCH`
 - `FETCH_KSEF_PURCHASES`
 
@@ -342,23 +340,23 @@ Poza główną logiką biznesową aplikacja udostępnia także:
 
 Najważniejszy obecnie scenariusz działania aplikacji wygląda tak:
 
-1. Użytkownik tworzy draft faktury.
+1. Właściciel tworzy draft faktury sprzedażowej.
 2. System wylicza sumy, zapisuje strony i pozycje oraz dodaje event utworzenia.
-3. Użytkownik waliduje i akceptuje fakturę.
+3. Właściciel waliduje i akceptuje fakturę.
 4. System generuje XML, zapisuje payload, ustawia statusy i dodaje zadanie `SEND_TO_KSEF`.
 5. Worker lub scheduler przetwarza zadanie integracyjne.
 6. W trybie `mock` faktura otrzymuje numer KSeF od razu, a w trybie `live` system przechodzi przez polling statusu.
-7. Po dalszej obsłudze księgowej dokument może otrzymać status `booked`, co tworzy zadanie wysyłki powiadomienia.
-8. Dla faktur zakupowych możliwe jest dodatkowo kwalifikowanie do batcha księgowego i wysyłka informacji o batchu.
+7. Po otrzymaniu numeru KSeF faktura sprzedażowa jest zakwalifikowana do wysyłki do biura księgowego.
+8. Na koniec miesiąca właściciel generuje batch — wszystkie zakwalifikowane faktury trafiają do jednej paczki wysyłanej do biura.
 
-Drugi kluczowy scenariusz — import faktur zakupowych:
+Drugi kluczowy scenariusz — import i kwalifikacja faktur zakupowych:
 
-1. Użytkownik lub harmonogram wywołuje pobranie faktur z KSeF API dla zakresu dat.
+1. Właściciel lub harmonogram wywołuje pobranie faktur z KSeF API dla zakresu dat.
 2. System pobiera dokumenty XML z KSeF i parsuje je zgodnie ze schematem FA(3) v1-0E.
 3. Każdy dokument jest deduplikowany po `ksef_number` i `invoice_number`.
 4. Nowe faktury zakupowe są tworzone z pełną strukturą (strony, pozycje, sumy VAT) i statusem `ACCEPTED`.
-5. Alternatywnie, pojedynczy plik XML może być zaimportowany skryptem `import_purchase_xml.py`.
-6. Zaimportowane faktury zakupowe przechodzą dalej przez proces kwalifikacji i batchowania księgowego.
+5. Właściciel przegląda faktury zakupowe i kwalifikuje je do wysłania do biura lub odrzuca.
+6. Zakwalifikowane faktury trafiają do batcha miesięcznego i są wysyłane do biura księgowego.
 
 
 ## Instalacja i konfiguracja
@@ -502,7 +500,7 @@ INSERT INTO app_role (role_code, role_name, description) VALUES
 ('admin', 'Administrator', 'Pełne uprawnienia administracyjne'),
 ('agent', 'Agent AI', 'Tworzenie draftów i operacje automatyczne bez akceptacji'),
 ('reviewer', 'Reviewer', 'Edycja i akceptacja dokumentów'),
-('accountant', 'Księgowy', 'Operacje księgowe i statusy księgowe'),
+('owner', 'Właściciel/Operator', 'Wystawianie faktur, kwalifikacja zakupów, zarządzanie batchami do biura księgowego'),
 ('viewer', 'Viewer', 'Dostęp tylko do odczytu');
 
 CREATE TABLE party (
@@ -560,7 +558,7 @@ CREATE TABLE invoice (
     ksef_status_code VARCHAR(50) NULL COMMENT 'KSeF workflow status',
     erp_status VARCHAR(50) NULL COMMENT 'ERP workflow status',
     review_status VARCHAR(50) NULL COMMENT 'Review status: PENDING / APPROVED / REJECTED',
-    accounting_status VARCHAR(50) NULL COMMENT 'Accounting status: new / verified / posted / booked / cancelled',
+    accounting_status VARCHAR(50) NULL COMMENT 'Accounting status: new / qualified / batched / sent_to_office / rejected',
     issue_date DATE NOT NULL,
     due_date DATE NULL,
     invoice_currency VARCHAR(3) DEFAULT 'PLN',
@@ -858,7 +856,7 @@ SMTP_PORT=587
 SMTP_USER=
 SMTP_PASSWORD=
 SMTP_FROM=noreply@ksef.local
-DEFAULT_NOTIFICATION_EMAIL=accountant@example.com
+DEFAULT_NOTIFICATION_EMAIL=biuro@example.com
 
 LOG_LEVEL=INFO
 LOG_DIR=logs
@@ -889,7 +887,7 @@ Migracje tworzą lub rozszerzają następujące komponenty bazy:
 
 **Tabele użytkowników i ról:**
 - `app_user` — rejestr użytkowników aplikacji z haszami haseł, statusami blokady i metadanymi
-- `app_role` — słownik dostępnych ról systemowych (`admin`, `agent`, `reviewer`, `accountant`, `viewer`)
+- `app_role` — słownik dostępnych ról systemowych (`admin`, `agent`, `reviewer`, `owner`, `viewer`)
 - `app_user_role` — powiązania użytkowników z rolami
 
 **Tabele dokumentów i faktur:**
@@ -956,7 +954,7 @@ Ten krok wypełnia bazę danymi referencyjnymi, z których aplikacja korzysta od
 - role stron dokumentu, na przykład `SELLER`, `BUYER`, `ISSUER`, `RECIPIENT`
 - statusy obiegu KSeF, na przykład `DRAFT`, `SENT`, `ACCEPTED`, `ERROR`
 - typy payloadów integracyjnych
-- role użytkowników, na przykład `admin`, `agent`, `reviewer`, `accountant`, `viewer`
+- role użytkowników, na przykład `admin`, `agent`, `reviewer`, `owner`, `viewer`
 
 Skrypt nie powinien duplikować istniejących wpisów, więc można go uruchomić bezpiecznie także wtedy, gdy część danych została już wcześniej dodana.
 
@@ -1098,6 +1096,7 @@ Migracje znajdują się w `alembic/versions/`:
 | `20260514_0003` | Utworzenie tabeli `worker_heartbeat` z indeksem na `worker_id` |
 | `20260515_0001` | Dodanie unique constraint na `invoice.invoice_number` |
 | `20260515_0002` | Dodanie kolumn `phase` i `current_jobs_json` do `worker_heartbeat` |
+| `20260516_0001` | Zmiana roli `accountant` → `owner`, migracja statusów `accounting_status` i `erp_status` |
 
 ## Schemat bazy danych v1
 
@@ -1108,7 +1107,7 @@ Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP
 | Tabela | Zawartość |
 | --- | --- |
 | `app_user` | Konta użytkowników aplikacji z hasłami (bcrypt_sha256), statusami, metadanymi i opcjonalnym sekretem TOTP (`totp_secret`) |
-| `app_role` | Role systemowe: `admin`, `agent`, `reviewer`, `accountant`, `viewer` |
+| `app_role` | Role systemowe: `admin`, `agent`, `reviewer`, `owner`, `viewer` |
 | `app_user_role` | Powiązania: które role mają konkretni użytkownicy |
 | `worker_heartbeat` | Stan workerów: heartbeat, faza, bieżące zadania |
 
@@ -1160,8 +1159,8 @@ Baza danych `ksef_erp` jest centralnym repozytorium dla całego systemu KSeF ERP
 Dokumenty w systemie przechodzą przez kilka niezależnych wymiarów statusów:
 
 - **`ksef_status_code`**: `DRAFT` → `GENERATED` → `QUEUED` → `SENT` → `PROCESSING` → `ACCEPTED`/`REJECTED`
-- **`erp_status`**: `DRAFT_CREATED` → `READY_FOR_REVIEW` → `APPROVED` → `QUEUED_FOR_KSEF` → `SENT_TO_KSEF` → `KSEF_ACCEPTED` → `READY_FOR_ACCOUNTING` → `COMPLETED`
-- **`accounting_status`**: `new` → `verified` → `posted` → `booked` → `cancelled`
+- **`erp_status`**: `DRAFT_CREATED` → `READY_FOR_REVIEW` → `APPROVED` → `QUEUED_FOR_KSEF` → `SENT_TO_KSEF` → `KSEF_ACCEPTED` → `READY_FOR_ACCOUNTING` → `ACCOUNTING_BATCHED` → `SENT_TO_OFFICE`
+- **`accounting_status`**: `new` → `qualified` → `batched` → `sent_to_office` / `rejected`
 - **`review_status`**: `PENDING` → `APPROVED` / `REJECTED`
 
 Te statusy są niezależne, co pozwala na elastyczne modelowanie złożonych procesów biznesowych.

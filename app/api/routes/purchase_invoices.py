@@ -20,7 +20,7 @@ def list_purchase_invoices(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "reviewer", "accountant", "viewer")),
+    _: AppUser = Depends(require_roles("admin", "reviewer", "owner", "viewer")),
 ) -> list[InvoiceRead]:
     query = InvoiceListQuery(
         direction_code="PURCHASE",
@@ -37,7 +37,7 @@ def list_purchase_invoices(
 def get_purchase_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "reviewer", "accountant", "viewer")),
+    _: AppUser = Depends(require_roles("admin", "reviewer", "owner", "viewer")),
 ) -> InvoiceRead:
     try:
         invoice = InvoiceService.get_invoice(db, invoice_id)
@@ -53,7 +53,7 @@ def qualify_purchase_invoice(
     invoice_id: int,
     payload: PurchaseQualificationRequest,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(require_roles("admin", "reviewer", "accountant")),
+    current_user: AppUser = Depends(require_roles("admin", "reviewer", "owner")),
 ) -> InvoiceRead:
     try:
         invoice = AccountingService.qualify_purchase_invoice(
@@ -75,7 +75,7 @@ def qualify_purchase_invoice(
 def reject_purchase_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(require_roles("admin", "reviewer", "accountant")),
+    current_user: AppUser = Depends(require_roles("admin", "reviewer", "owner")),
 ) -> InvoiceRead:
     try:
         invoice = AccountingService.qualify_purchase_invoice(

@@ -13,7 +13,7 @@ from app.db.models import (
     InvoiceEvent,
 )
 
-ALLOWED_ACCOUNTING_STATUSES = {"new", "verified", "posted", "booked", "cancelled"}
+ALLOWED_ACCOUNTING_STATUSES = {"new", "qualified", "batched", "sent_to_office", "rejected"}
 
 
 def _purchase_batch_period_start(period_year: int, period_month: int) -> date:
@@ -46,8 +46,8 @@ class AccountingService:
         if accounting_qualified is not None:
             invoice.accounting_qualified = accounting_qualified
 
-        if accounting_status == "booked":
-            invoice.erp_status = "COMPLETED"
+        if accounting_status == "sent_to_office":
+            invoice.erp_status = "SENT_TO_OFFICE"
 
         db.add(
             InvoiceEvent(
@@ -63,33 +63,6 @@ class AccountingService:
                 },
             )
         )
-
-        if accounting_status == "booked":
-            db.add(
-                IntegrationJob(
-                    job_uuid=str(uuid.uuid4()),
-                    tenant_id=invoice.tenant_id,
-                    invoice_id=invoice.id,
-                    related_entity_type="NOTIFICATION",
-                    related_entity_id=str(invoice.id),
-                    job_type="SEND_BOOKED_NOTIFICATION",
-                    status="NEW",
-                    priority=200,
-                    attempts=0,
-                    max_attempts=5,
-                    request_payload={"invoice_id": invoice.id, "status": "booked"},
-                )
-            )
-            db.add(
-                InvoiceEvent(
-                    invoice_id=invoice.id,
-                    event_type="BOOKED_CLICK_RECORDED",
-                    event_status="SUCCESS",
-                    actor_type="USER",
-                    actor_id=str(user_id),
-                    message='Zarejestrowano kliknięcie "Zaksięgowano".',
-                )
-            )
 
         db.commit()
         db.refresh(invoice)
@@ -119,6 +92,7 @@ class AccountingService:
         invoice.accounting_notes = accounting_notes
         invoice.erp_status = "READY_FOR_ACCOUNTING" if accounting_qualified else "BLOCKED"
         invoice.review_status = "APPROVED" if accounting_qualified else "REJECTED"
+        invoice.accounting_status = "qualified" if accounting_qualified else "rejected"
 
         db.add(
             InvoiceEvent(
@@ -127,7 +101,7 @@ class AccountingService:
                 event_status="SUCCESS",
                 actor_type="USER",
                 actor_id=str(user_id),
-                message="Zmieniono kwalifikację faktury zakupowej.",
+                message="Zmieniono kwalifikację faktury do wysyłki do biura księgowego.",
                 details={
                     "accounting_qualified": accounting_qualified,
                     "accounting_notes": accounting_notes,
@@ -207,6 +181,7 @@ class AccountingService:
                 )
                 invoice.accounting_batch_id = batch.batch_code
                 invoice.erp_status = "ACCOUNTING_BATCHED"
+                invoice.accounting_status = "batched"
                 batch.item_count += 1
 
                 db.add(
@@ -216,7 +191,7 @@ class AccountingService:
                         event_status="SUCCESS",
                         actor_type="SYSTEM",
                         actor_id="accounting_service",
-                        message="Dodano do batcha księgowego.",
+                        message="Dodano do batcha wysyłkowego do biura księgowego.",
                         details={"batch_code": batch.batch_code},
                     )
                 )
@@ -253,7 +228,7 @@ class AccountingService:
         if not invoice:
             raise ValueError(f"Invoice id={invoice_id} nie istnieje.")
         if not invoice.accounting_qualified:
-            raise ValueError("Faktura nie jest zakwalifikowana do procesu księgowego.")
+            raise ValueError("Faktura nie jest zakwalifikowana do wysyłki do biura księgowego.")
         if invoice.accounting_batch_id:
             raise ValueError(f"Faktura jest już w batchu: {invoice.accounting_batch_id}")
 
@@ -299,6 +274,7 @@ class AccountingService:
         )
         invoice.accounting_batch_id = batch.batch_code
         invoice.erp_status = "ACCOUNTING_BATCHED"
+        invoice.accounting_status = "batched"
         batch.item_count += 1
 
         db.add(
@@ -319,7 +295,7 @@ class AccountingService:
 
     @staticmethod
     def send_accounting_batch_notification(db: Session, batch_id: int) -> None:
-        """Mark the accounting batch as SENT and log the event."""
+        """Mark the accounting batch as SENT to accounting office and update invoice statuses."""
         import logging as _logging
         batch = db.get(AccountingBatch, batch_id)
         if not batch:
@@ -330,10 +306,23 @@ class AccountingService:
 
         batch.status = "SENT"
         batch.sent_at = datetime.now(tz=timezone.utc)
+
+        # Update all invoices in batch to sent_to_office status
+        batch_invoices = db.execute(
+            select(AccountingBatchInvoice).where(
+                AccountingBatchInvoice.batch_id == batch_id
+            )
+        ).scalars().all()
+        for bi in batch_invoices:
+            invoice = db.get(Invoice, bi.invoice_id)
+            if invoice:
+                invoice.accounting_status = "sent_to_office"
+                invoice.erp_status = "SENT_TO_OFFICE"
+
         db.commit()
 
         _logging.getLogger(__name__).info(
-            "Accounting batch id=%s code=%s (%d invoices) marked as SENT.",
+            "Accounting batch id=%s code=%s (%d invoices) sent to accounting office.",
             batch.id,
             batch.batch_code,
             batch.item_count,

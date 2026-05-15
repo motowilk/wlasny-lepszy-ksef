@@ -998,7 +998,7 @@ def invoice_detail(
 def invoice_qualify(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "accountant")),
+    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "owner")),
 ):
     from urllib.parse import urlencode
     from app.services.accounting_service import AccountingService
@@ -1011,7 +1011,7 @@ def invoice_qualify(
             accounting_qualified=True,
             accounting_notes=None,
         )
-        params = urlencode({"action_success": "Faktura zakwalifikowana do procesu księgowego."})
+        params = urlencode({"action_success": "Faktura zakwalifikowana do wysłania do biura księgowego."})
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
@@ -1022,7 +1022,7 @@ def invoice_qualify(
 def invoice_reject_accounting(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "accountant")),
+    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "owner")),
 ):
     from urllib.parse import urlencode
     from app.services.accounting_service import AccountingService
@@ -1035,7 +1035,7 @@ def invoice_reject_accounting(
             accounting_qualified=False,
             accounting_notes="Odrzucono z procesu kosztowego.",
         )
-        params = urlencode({"action_success": "Faktura odrzucona z procesu księgowego."})
+        params = urlencode({"action_success": "Faktura odrzucona — nie zostanie wysłana do biura księgowego."})
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
@@ -1046,7 +1046,7 @@ def invoice_reject_accounting(
 def invoice_undo_qualify(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "accountant")),
+    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "owner")),
 ):
     from urllib.parse import urlencode
     from app.db.models import InvoiceEvent
@@ -1064,6 +1064,7 @@ def invoice_undo_qualify(
         invoice.accounting_notes = None
         invoice.erp_status = "KSEF_ACCEPTED"
         invoice.review_status = None
+        invoice.accounting_status = "new"
 
         db.add(
             InvoiceEvent(
@@ -1087,7 +1088,7 @@ def invoice_undo_qualify(
 def invoice_add_to_batch(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(ui_require_roles("admin", "accountant")),
+    current_user: AppUser = Depends(ui_require_roles("admin", "owner")),
 ):
     from urllib.parse import urlencode
     from app.services.accounting_service import AccountingService
@@ -1386,7 +1387,7 @@ def batch_remove_invoice(
     batch_id: int,
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(ui_require_roles("admin", "accountant")),
+    current_user: AppUser = Depends(ui_require_roles("admin", "owner")),
 ):
     from urllib.parse import urlencode
     from app.db.models import InvoiceEvent
@@ -1413,6 +1414,7 @@ def batch_remove_invoice(
         if invoice:
             invoice.accounting_batch_id = None
             invoice.erp_status = "READY_FOR_ACCOUNTING"
+            invoice.accounting_status = "qualified"
             db.add(
                 InvoiceEvent(
                     invoice_id=invoice.id,

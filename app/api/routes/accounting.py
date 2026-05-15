@@ -22,7 +22,7 @@ def update_accounting_status(
     invoice_id: int,
     payload: AccountingStatusUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(require_roles("admin", "accountant")),
+    current_user: AppUser = Depends(require_roles("admin", "owner")),
 ) -> InvoiceRead:
     try:
         invoice = AccountingService.update_accounting_status(
@@ -45,7 +45,7 @@ def update_accounting_status(
 def generate_accounting_batch(
     payload: AccountingBatchGenerateRequest,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(require_roles("admin", "accountant")),
+    current_user: AppUser = Depends(require_roles("admin", "owner")),
 ) -> AccountingBatchRead:
     batch = AccountingService.generate_monthly_purchase_batch(
         db=db,
@@ -60,7 +60,7 @@ def generate_accounting_batch(
 @router.get("/accounting-batches", response_model=list[AccountingBatchRead])
 def list_accounting_batches(
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "accountant", "viewer")),
+    _: AppUser = Depends(require_roles("admin", "owner", "viewer")),
 ) -> list[AccountingBatchRead]:
     items = (
         db.execute(select(AccountingBatch).order_by(AccountingBatch.id.desc()))
@@ -74,7 +74,7 @@ def list_accounting_batches(
 def get_accounting_batch(
     batch_id: int,
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "accountant", "viewer")),
+    _: AppUser = Depends(require_roles("admin", "owner", "viewer")),
 ) -> AccountingBatchRead:
     batch = db.get(AccountingBatch, batch_id)
     if not batch:
@@ -87,9 +87,9 @@ def qualify_invoice_for_accounting(
     invoice_id: int,
     payload: PurchaseQualificationRequest,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(require_roles("admin", "agent", "accountant")),
+    current_user: AppUser = Depends(require_roles("admin", "agent", "owner")),
 ) -> InvoiceRead:
-    """Qualify any invoice (PURCHASE or SALE with KSEF ACCEPTED) for accounting batch."""
+    """Qualify any invoice (PURCHASE or SALE with KSEF ACCEPTED) for sending to accounting office."""
     try:
         invoice = AccountingService.qualify_purchase_invoice(
             db=db,
@@ -107,9 +107,9 @@ def qualify_invoice_for_accounting(
 def add_invoice_to_batch(
     invoice_id: int,
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(require_roles("admin", "agent", "accountant")),
+    current_user: AppUser = Depends(require_roles("admin", "agent", "owner")),
 ) -> AccountingBatchRead:
-    """Add a single qualified invoice to the monthly accounting batch for its issue_date period."""
+    """Add a single qualified invoice to the monthly batch for sending to accounting office."""
     try:
         batch = AccountingService.add_single_invoice_to_batch(
             db=db,

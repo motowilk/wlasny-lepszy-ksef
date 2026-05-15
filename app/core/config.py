@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     smtp_password: str = Field(default="", alias="SMTP_PASSWORD")
     smtp_from: str = Field(default="noreply@example.com", alias="SMTP_FROM")
     default_notification_email: str = Field(
-        default="accountant@example.com",
+        default="biuro@example.com",
         alias="DEFAULT_NOTIFICATION_EMAIL",
     )
 

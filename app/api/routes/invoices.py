@@ -39,7 +39,7 @@ def list_invoices(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     _: AppUser = Depends(
-        require_roles("admin", "reviewer", "accountant", "viewer", "agent")
+        require_roles("admin", "reviewer", "owner", "viewer", "agent")
     ),
 ) -> list[InvoiceRead]:
     query = InvoiceListQuery(
@@ -60,7 +60,7 @@ def get_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),
     _: AppUser = Depends(
-        require_roles("admin", "reviewer", "accountant", "viewer", "agent")
+        require_roles("admin", "reviewer", "owner", "viewer", "agent")
     ),
 ) -> InvoiceRead:
     try:
@@ -147,7 +147,7 @@ def approve_invoice(
 def get_invoice_events(
     invoice_id: int,
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "reviewer", "accountant", "viewer")),
+    _: AppUser = Depends(require_roles("admin", "reviewer", "owner", "viewer")),
 ):
     if not db.get(Invoice, invoice_id):
         raise HTTPException(status_code=404, detail="Faktura nie istnieje.")
@@ -179,7 +179,7 @@ def get_invoice_events(
 def get_invoice_payloads(
     invoice_id: int,
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "reviewer", "accountant", "viewer")),
+    _: AppUser = Depends(require_roles("admin", "reviewer", "owner", "viewer")),
 ):
     if not db.get(Invoice, invoice_id):
         raise HTTPException(status_code=404, detail="Faktura nie istnieje.")

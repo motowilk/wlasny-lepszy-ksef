@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api", tags=["notifications"])
 def create_notification(
     invoice_id: int,
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "reviewer", "accountant")),
+    _: AppUser = Depends(require_roles("admin", "reviewer", "owner")),
 ) -> NotificationRead:
     try:
         notification = NotificationService.create_invoice_notification(db, invoice_id)
@@ -31,7 +31,7 @@ def create_notification(
 def send_notification(
     notification_id: int,
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "reviewer", "accountant")),
+    _: AppUser = Depends(require_roles("admin", "reviewer", "owner")),
 ) -> NotificationRead:
     try:
         notification = NotificationService.send_notification(db, notification_id)
@@ -46,7 +46,7 @@ def send_notification(
 @router.get("/notifications", response_model=list[NotificationRead])
 def list_notifications(
     db: Session = Depends(get_db),
-    _: AppUser = Depends(require_roles("admin", "accountant", "viewer")),
+    _: AppUser = Depends(require_roles("admin", "owner", "viewer")),
 ) -> list[NotificationRead]:
     items = (
         db.execute(select(NotificationLog).order_by(NotificationLog.id.desc()))

@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class AccountingStatusUpdateRequest(BaseModel):
     accounting_status: str = Field(
         ...,
-        description="new / verified / posted / booked / cancelled",
+        description="new / qualified / batched / sent_to_office / rejected",
     )
     accounting_notes: str | None = None
     accounting_qualified: bool | None = None
