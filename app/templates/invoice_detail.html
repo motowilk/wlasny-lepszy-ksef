@@ -27,13 +27,18 @@
             <form method="post" action="/ui/invoices/{{ invoice.id }}/qualify" class="inline-form" style="margin-left:6px">
                 <button class="btn" type="submit">Zakwalifikuj do księgowości</button>
             </form>
+            {% if invoice.erp_status != 'BLOCKED' %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/reject-accounting" class="inline-form" style="margin-left:6px">
                 <button class="btn secondary" type="submit">Odrzuć z procesu</button>
             </form>
             {% endif %}
+            {% endif %}
             {% if invoice.accounting_qualified and not invoice.accounting_batch_id %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/add-to-batch" class="inline-form" style="margin-left:6px">
                 <button class="btn" type="submit">Dodaj do batcha</button>
+            </form>
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form" style="margin-left:6px">
+                <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
             </form>
             {% endif %}
         {% endif %}
@@ -48,6 +53,9 @@
             {% if invoice.accounting_qualified %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/add-to-batch" class="inline-form" style="margin-left:6px">
                 <button class="btn" type="submit">Dodaj do batcha</button>
+            </form>
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form" style="margin-left:6px">
+                <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
             </form>
             {% endif %}
         {% endif %}

@@ -1027,6 +1027,47 @@ def invoice_reject_accounting(
     return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
+@router.post("/ui/invoices/{invoice_id}/undo-qualify")
+def invoice_undo_qualify(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer", "accountant")),
+):
+    from urllib.parse import urlencode
+    from app.db.models import InvoiceEvent
+
+    try:
+        invoice = db.get(Invoice, invoice_id)
+        if not invoice:
+            raise ValueError("Faktura nie istnieje.")
+        if invoice.accounting_batch_id:
+            raise ValueError("Nie można cofnąć kwalifikacji — faktura jest już w batchu.")
+
+        invoice.accounting_qualified = None
+        invoice.accounting_marked_by = None
+        invoice.accounting_marked_at = None
+        invoice.accounting_notes = None
+        invoice.erp_status = "KSEF_ACCEPTED"
+        invoice.review_status = None
+
+        db.add(
+            InvoiceEvent(
+                invoice_id=invoice.id,
+                event_type="PURCHASE_QUALIFICATION_REVERTED",
+                event_status="SUCCESS",
+                actor_type="USER",
+                actor_id=str(current_user.id),
+                message="Cofnięto kwalifikację faktury.",
+            )
+        )
+        db.commit()
+        params = urlencode({"action_success": "Kwalifikacja cofnięta."})
+    except ValueError as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+
+
 @router.post("/ui/invoices/{invoice_id}/add-to-batch")
 def invoice_add_to_batch(
     invoice_id: int,
