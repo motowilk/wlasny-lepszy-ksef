@@ -1,7 +1,21 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<h1>Batch {{ batch.batch_code }}</h1>
+<div class="page-header">
+    <h1>Batch {{ batch.batch_code }}</h1>
+    <a class="btn secondary" href="/ui/accounting-batches">Powrót</a>
+</div>
+
+{% if action_success %}
+<div style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-weight:500">
+    ✓ {{ action_success }}
+</div>
+{% endif %}
+{% if action_error %}
+<div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-weight:500">
+    Błąd: {{ action_error }}
+</div>
+{% endif %}
 
 <div class="card">
     <p><strong>Status:</strong> {{ batch.status }}</p>
@@ -10,24 +24,40 @@
     <p><strong>Liczba pozycji:</strong> {{ batch.item_count }}</p>
 </div>
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Invoice ID</th>
-            <th>Status</th>
-            <th>Powód</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for item in items %}
-        <tr>
-            <td>{{ item.id }}</td>
-            <td>{{ item.invoice_id }}</td>
-            <td>{{ item.inclusion_status }}</td>
-            <td>{{ item.inclusion_reason or "-" }}</td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<section class="card" style="margin-top:16px">
+    <h2>Faktury w batchu</h2>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID faktury</th>
+                <th>Numer</th>
+                <th>Kierunek</th>
+                <th>Data wyst.</th>
+                <th>Brutto</th>
+                <th>Status</th>
+                <th>Akcje</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for item in items %}
+            <tr>
+                <td>{{ item.invoice_id }}</td>
+                <td>{{ item.invoice.invoice_number if item.invoice else '-' }}</td>
+                <td>{{ item.invoice.direction_code if item.invoice else '-' }}</td>
+                <td>{{ item.invoice.issue_date if item.invoice else '-' }}</td>
+                <td>{{ item.invoice.gross_total|plnum if item.invoice else '-' }}</td>
+                <td>
+                    <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#d4edda;color:#155724">{{ item.inclusion_status }}</span>
+                </td>
+                <td>
+                    <a class="btn-detail" href="/ui/invoices/{{ item.invoice_id }}" style="margin-right:6px">Szczegóły</a>
+                    <form method="post" action="/ui/accounting-batches/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form" style="display:inline">
+                        <button type="submit" class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="return confirm('Usunąć fakturę z batcha?')">Usuń z batcha</button>
+                    </form>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
 {% endblock %}

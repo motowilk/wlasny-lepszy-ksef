@@ -67,3 +67,4 @@ class AccountingBatchInvoice(Base):
     )
 
     batch = relationship("AccountingBatch", back_populates="invoices")
+    invoice = relationship("Invoice")

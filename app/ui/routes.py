@@ -1078,18 +1078,9 @@ def invoice_add_to_batch(
     from app.services.accounting_service import AccountingService
 
     try:
-        invoice = db.get(Invoice, invoice_id)
-        if not invoice:
-            raise ValueError("Faktura nie istnieje.")
-        if not invoice.accounting_qualified:
-            raise ValueError("Faktura nie jest zakwalifikowana do procesu księgowego.")
-        if invoice.accounting_batch_id:
-            raise ValueError(f"Faktura jest już w batchu: {invoice.accounting_batch_id}")
-
-        batch = AccountingService.generate_monthly_purchase_batch(
+        batch = AccountingService.add_single_invoice_to_batch(
             db=db,
-            period_year=invoice.issue_date.year,
-            period_month=invoice.issue_date.month,
+            invoice_id=invoice_id,
             created_by=current_user.id,
         )
         params = urlencode({"action_success": f"Dodano do batcha {batch.batch_code}."})
@@ -1343,6 +1334,8 @@ def accounting_batches_list(
 def accounting_batch_detail(
     batch_id: int,
     request: Request,
+    action_success: str | None = None,
+    action_error: str | None = None,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
 ):
@@ -1352,7 +1345,9 @@ def accounting_batch_detail(
 
     items = list(
         db.execute(
-            select(AccountingBatchInvoice).where(AccountingBatchInvoice.batch_id == batch_id)
+            select(AccountingBatchInvoice)
+            .options(joinedload(AccountingBatchInvoice.invoice))
+            .where(AccountingBatchInvoice.batch_id == batch_id)
         )
         .scalars()
         .all()
@@ -1365,8 +1360,69 @@ def accounting_batch_detail(
             "current_user": current_user,
             "batch": batch,
             "items": items,
+            "action_success": action_success,
+            "action_error": action_error,
         },
     )
+
+
+@router.post("/ui/accounting-batches/{batch_id}/remove-invoice/{invoice_id}")
+def batch_remove_invoice(
+    batch_id: int,
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "accountant")),
+):
+    from urllib.parse import urlencode
+    from app.db.models import InvoiceEvent
+
+    try:
+        batch = db.get(AccountingBatch, batch_id)
+        if not batch:
+            raise ValueError("Batch nie istnieje.")
+
+        link = db.execute(
+            select(AccountingBatchInvoice).where(
+                AccountingBatchInvoice.batch_id == batch_id,
+                AccountingBatchInvoice.invoice_id == invoice_id,
+            )
+        ).scalar_one_or_none()
+        if not link:
+            raise ValueError("Faktura nie jest w tym batchu.")
+
+        invoice = db.get(Invoice, invoice_id)
+        db.delete(link)
+
+        batch.item_count = max(0, batch.item_count - 1)
+
+        if invoice:
+            invoice.accounting_batch_id = None
+            invoice.erp_status = "READY_FOR_ACCOUNTING"
+            db.add(
+                InvoiceEvent(
+                    invoice_id=invoice.id,
+                    event_type="REMOVED_FROM_ACCOUNTING_BATCH",
+                    event_status="SUCCESS",
+                    actor_type="USER",
+                    actor_id=str(current_user.id),
+                    message=f"Usunięto z batcha {batch.batch_code}.",
+                )
+            )
+
+        # If batch is now empty, delete it entirely
+        if batch.item_count <= 0:
+            db.delete(batch)
+            db.commit()
+            from urllib.parse import urlencode
+            params = urlencode({"batch_deleted": "1"})
+            return RedirectResponse(url=f"/ui/accounting-batches", status_code=303)
+
+        db.commit()
+        params = urlencode({"action_success": f"Usunięto fakturę #{invoice_id} z batcha."})
+    except ValueError as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/accounting-batches/{batch_id}?{params}", status_code=303)
 
 
 @router.get("/ui/notifications")

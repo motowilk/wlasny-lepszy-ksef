@@ -150,22 +150,35 @@ class AccountingService:
         try:
             _purchase_batch_period_start(period_year, period_month)
 
-            batch = AccountingBatch(
-                batch_uuid=str(uuid.uuid4()),
-                batch_code=(
-                    f"BATCH-{period_year}-{period_month:02d}-"
-                    f"{uuid.uuid4().hex[:8].upper()}"
-                ),
-                batch_type="MONTHLY",
-                status="GENERATED",
-                period_year=period_year,
-                period_month=period_month,
-                criteria_json=criteria_json,
-                created_by=created_by,
-                item_count=0,
-            )
-            db.add(batch)
-            db.flush()
+            # Reuse existing open batch for this period if one exists
+            existing_batch = db.execute(
+                select(AccountingBatch).where(
+                    AccountingBatch.batch_type == "MONTHLY",
+                    AccountingBatch.period_year == period_year,
+                    AccountingBatch.period_month == period_month,
+                    AccountingBatch.status.in_(("GENERATED", "SENT")),
+                )
+            ).scalar_one_or_none()
+
+            if existing_batch:
+                batch = existing_batch
+            else:
+                batch = AccountingBatch(
+                    batch_uuid=str(uuid.uuid4()),
+                    batch_code=(
+                        f"BATCH-{period_year}-{period_month:02d}-"
+                        f"{uuid.uuid4().hex[:8].upper()}"
+                    ),
+                    batch_type="MONTHLY",
+                    status="GENERATED",
+                    period_year=period_year,
+                    period_month=period_month,
+                    criteria_json=criteria_json,
+                    created_by=created_by,
+                    item_count=0,
+                )
+                db.add(batch)
+                db.flush()
 
             stmt = (
                 select(Invoice)
@@ -228,6 +241,81 @@ class AccountingService:
         except Exception:
             db.rollback()
             raise
+
+    @staticmethod
+    def add_single_invoice_to_batch(
+        db: Session,
+        invoice_id: int,
+        created_by: int | None = None,
+    ) -> AccountingBatch:
+        """Add a single qualified invoice to the monthly batch for its period."""
+        invoice = db.get(Invoice, invoice_id)
+        if not invoice:
+            raise ValueError(f"Invoice id={invoice_id} nie istnieje.")
+        if not invoice.accounting_qualified:
+            raise ValueError("Faktura nie jest zakwalifikowana do procesu księgowego.")
+        if invoice.accounting_batch_id:
+            raise ValueError(f"Faktura jest już w batchu: {invoice.accounting_batch_id}")
+
+        period_year = invoice.issue_date.year
+        period_month = invoice.issue_date.month
+
+        # Reuse existing batch or create new one
+        existing_batch = db.execute(
+            select(AccountingBatch).where(
+                AccountingBatch.batch_type == "MONTHLY",
+                AccountingBatch.period_year == period_year,
+                AccountingBatch.period_month == period_month,
+                AccountingBatch.status.in_(("GENERATED", "SENT")),
+            )
+        ).scalar_one_or_none()
+
+        if existing_batch:
+            batch = existing_batch
+        else:
+            batch = AccountingBatch(
+                batch_uuid=str(uuid.uuid4()),
+                batch_code=(
+                    f"BATCH-{period_year}-{period_month:02d}-"
+                    f"{uuid.uuid4().hex[:8].upper()}"
+                ),
+                batch_type="MONTHLY",
+                status="GENERATED",
+                period_year=period_year,
+                period_month=period_month,
+                created_by=created_by,
+                item_count=0,
+            )
+            db.add(batch)
+            db.flush()
+
+        db.add(
+            AccountingBatchInvoice(
+                batch_id=batch.id,
+                invoice_id=invoice.id,
+                inclusion_status="SELECTED",
+                inclusion_reason="Dodano ręcznie do batcha.",
+            )
+        )
+        invoice.accounting_batch_id = batch.batch_code
+        invoice.erp_status = "ACCOUNTING_BATCHED"
+        batch.item_count += 1
+
+        db.add(
+            InvoiceEvent(
+                invoice_id=invoice.id,
+                event_type="ADDED_TO_ACCOUNTING_BATCH",
+                event_status="SUCCESS",
+                actor_type="USER",
+                actor_id=str(created_by) if created_by else "system",
+                message=f"Dodano do batcha {batch.batch_code}.",
+                details={"batch_code": batch.batch_code},
+            )
+        )
+
+        db.commit()
+        db.refresh(batch)
+        return batch
 
     @staticmethod
     def send_accounting_batch_notification(db: Session, batch_id: int) -> None:

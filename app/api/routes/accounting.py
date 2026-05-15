@@ -109,27 +109,13 @@ def add_invoice_to_batch(
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(require_roles("admin", "agent", "accountant")),
 ) -> AccountingBatchRead:
-    """Add a qualified invoice to the monthly accounting batch for its issue_date period."""
-    from app.db.models import Invoice as InvoiceModel
-
-    invoice = db.get(InvoiceModel, invoice_id)
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Faktura nie istnieje.")
-    if not invoice.accounting_qualified:
-        raise HTTPException(
-            status_code=400,
-            detail="Faktura nie jest zakwalifikowana do procesu księgowego.",
+    """Add a single qualified invoice to the monthly accounting batch for its issue_date period."""
+    try:
+        batch = AccountingService.add_single_invoice_to_batch(
+            db=db,
+            invoice_id=invoice_id,
+            created_by=current_user.id,
         )
-    if invoice.accounting_batch_id:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Faktura jest już w batchu: {invoice.accounting_batch_id}",
-        )
-
-    batch = AccountingService.generate_monthly_purchase_batch(
-        db=db,
-        period_year=invoice.issue_date.year,
-        period_month=invoice.issue_date.month,
-        created_by=current_user.id,
-    )
-    return AccountingBatchRead.model_validate(batch, from_attributes=True)
+        return AccountingBatchRead.model_validate(batch, from_attributes=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
