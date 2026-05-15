@@ -1,3 +1,6 @@
+<img width="2912" height="1284" alt="image" src="https://github.com/user-attachments/assets/72832e1f-7572-45a8-84db-c72bb9203fc9" />
+
+
 # Własny Lepszy KSeF
 
 Poniżej znajduje się uproszczona instrukcja pierwszego uruchomienia projektu. Zawiera tylko kroki operacyjne potrzebne do startu aplikacji lokalnie, bez opisu architektury i bez zawartości plików źródłowych w dokumentacji.
