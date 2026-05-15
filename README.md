@@ -1,3 +1,61 @@
+## Własny Lepszy KSeF
+
+## Czym jest ta aplikacja?
+
+**Własny Lepszy KSeF** to lokalny system ERP do obsługi obiegu faktur zintegrowany z Krajowym Systemem e-Faktur (KSeF). Aplikacja zastępuje ręczne logowanie do portalu MF i manualne zarządzanie dokumentami — daje firmie własny, kontrolowany punkt dostępu do KSeF z pełnym workflow księgowym.
+
+## Dla kogo i po co?
+
+Aplikacja jest przeznaczona dla małej lub średniej firmy (lub biura rachunkowego), która:
+
+- chce mieć **własny rejestr faktur** sprzedażowych i zakupowych z pełną historią zmian
+- potrzebuje **automatycznej wysyłki faktur do KSeF** bez ręcznego wklejania XML-i w portal MF
+- chce **importować faktury zakupowe z KSeF** i prowadzić na nich proces kwalifikacji księgowej
+- potrzebuje **śladu audytowego** — kto, kiedy, co zrobił z dokumentem
+- chce **powiadomień e-mail/Slack** o zaksięgowanych fakturach i batchach
+- potrzebuje podziału ról — agent AI tworzy drafty, reviewer akceptuje, księgowy kwalifikuje i batchuje
+
+## Jak wygląda miesiąc pracy z aplikacją?
+
+### Tydzień 1–4: codzienne operacje
+
+**Faktury sprzedażowe (codziennie):**
+1. Agent lub użytkownik tworzy draft faktury sprzedażowej (ręcznie w UI lub przez API).
+2. System wylicza kwoty, VAT, sumy.
+3. Reviewer sprawdza i akceptuje fakturę.
+4. W tle Scheduler wysyła XML do KSeF i czeka na potwierdzenie numeru KSeF.
+5. Faktura otrzymuje oficjalny numer KSeF — gotowe.
+
+**Faktury zakupowe (codziennie lub co kilka dni):**
+1. Scheduler lub użytkownik odpala import faktur zakupowych z KSeF za ostatnie dni.
+2. System parsuje XML-e, deduplikuje i tworzy faktury zakupowe w rejestrze.
+3. Księgowy przegląda nowe faktury zakupowe, kwalifikuje je do procesu księgowego lub odrzuca.
+
+### Koniec miesiąca: zamknięcie okresu
+
+1. Księgowy zmienia statusy zakwalifikowanych faktur: `new` → `verified` → `posted` → `booked`.
+2. Po zaksięgowaniu system automatycznie tworzy powiadomienie e-mail.
+3. Księgowy generuje **batch miesięczny** — system zbiera wszystkie zakwalifikowane faktury zakupowe z danego miesiąca w jedną paczkę.
+4. Batch dostaje kod (np. `PURCHASE_2026_05`), jest wysyłany jako powiadomienie do systemu ERP lub zespołu.
+5. Faktury w batchu zmieniają status ERP na `ACCOUNTING_BATCHED`.
+
+### Ciągłe w tle:
+
+- Scheduler co kilka minut sprawdza kolejkę zadań i przetwarza: wysyłki, pollingi statusów, powiadomienia, importy.
+- Heartbeat workera jest widoczny w bazie — wiadomo, czy procesy działają.
+- Pełna historia eventów pozwala w dowolnym momencie prześledzić, co się działo z konkretną fakturą.
+
+### Podsumowanie wartości:
+
+| Bez aplikacji | Z aplikacją |
+|---|---|
+| Ręczne logowanie do portalu KSeF | Automatyczna wysyłka i polling w tle |
+| Excel z listą faktur zakupowych | Rejestr z importem z KSeF, filtrami, statusami |
+| Brak historii zmian | Pełny audit trail z eventami |
+| Brak procesu kwalifikacji | Workflow: draft → review → approve → KSeF → booked |
+| Ręczne informowanie księgowego | Automatyczne powiadomienia e-mail/Slack |
+| Brak batchowania | Miesięczne paczki księgowe z jednym kliknięciem |
+
 <img width="2912" height="1284" alt="image" src="https://github.com/user-attachments/assets/72832e1f-7572-45a8-84db-c72bb9203fc9" />
 Statusy faktury:
 <img width="2014" height="1924" alt="image" src="https://github.com/user-attachments/assets/ea5669ea-86be-47fd-9051-d88189e09da6" />
@@ -6,10 +64,6 @@ Kontrahenci:
 Użytkownicy:
 <img width="2026" height="264" alt="image" src="https://github.com/user-attachments/assets/97f3c363-62e6-4a2e-8148-453915b86e9a" />
 
-
-# Własny Lepszy KSeF
-
-Poniżej znajduje się uproszczona instrukcja pierwszego uruchomienia projektu. Zawiera tylko kroki operacyjne potrzebne do startu aplikacji lokalnie, bez opisu architektury i bez zawartości plików źródłowych w dokumentacji.
 
 ## Aktualna funkcjonalność aplikacji
 
