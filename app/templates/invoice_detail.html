@@ -68,9 +68,9 @@
             <span class="badge badge-ksef-{{ invoice.ksef_status_code | lower }}">{{ invoice.ksef_status_code }}</span>
         </p>
         <p><strong>Status ERP:</strong> {{ invoice.erp_status }}</p>
-        <p><strong>Netto:</strong> {{ invoice.net_total }}</p>
-        <p><strong>VAT:</strong> {{ invoice.vat_total }}</p>
-        <p><strong>Brutto:</strong> {{ invoice.gross_total }}</p>
+        <p><strong>Netto:</strong> {{ invoice.net_total|plnum }}</p>
+        <p><strong>VAT:</strong> {{ invoice.vat_total|plnum }}</p>
+        <p><strong>Brutto:</strong> {{ invoice.gross_total|plnum }}</p>
     </section>
 
     <section class="card">
@@ -102,11 +102,11 @@
             <tr>
                 <td>{{ line.line_no }}</td>
                 <td>{{ line.product_name }}</td>
-                <td>{{ line.quantity }}</td>
-                <td>{{ line.unit_price_net }}</td>
-                <td>{{ line.vat_rate }}</td>
-                <td>{{ line.net_amount }}</td>
-                <td>{{ line.gross_amount }}</td>
+                <td>{{ line.quantity|plnum }}</td>
+                <td>{{ line.unit_price_net|plnum }}</td>
+                <td>{{ line.vat_rate|plnum }}</td>
+                <td>{{ line.net_amount|plnum }}</td>
+                <td>{{ line.gross_amount|plnum }}</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -22,7 +22,7 @@
         <div class="form-grid form-grid-3">
             <label>
                 Numer faktury *
-                <input type="text" name="invoice_number" value="{{ prefill.get('invoice_number', '') }}" required placeholder="np. HAYS/A1/4/2026">
+                <input type="text" name="invoice_number" value="{{ prefill.get('invoice_number', '') }}" required placeholder="A1/4/2026">
             </label>
             <label>
                 Data wystawienia *
@@ -77,11 +77,11 @@
             </label>
             <label>
                 Kod SWIFT / BIC
-                <input type="text" name="payment_swift" value="{{ prefill.get('payment_swift', '') }}" placeholder="np. BPKOPLPW">
+                <input type="text" name="payment_swift" value="{{ prefill.get('payment_swift', '') }}" placeholder="Np.: SWIFTBIC">
             </label>
             <label class="span-2">
                 Nazwa banku
-                <input type="text" name="payment_bank_name" value="{{ prefill.get('payment_bank_name', '') }}" placeholder="np. PKO Bank Polski SA">
+                <input type="text" name="payment_bank_name" value="{{ prefill.get('payment_bank_name', '') }}" placeholder="Np.: ING Bank Śląski S.A.">
             </label>
         </div>
     </section>

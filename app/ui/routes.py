@@ -48,6 +48,21 @@ from app.services.validation_service import ValidationService
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 _UI_SESSION_NONCE_KEY = "ui_session_nonce"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+
+def _plnum(value) -> str:
+    """Format a number for Polish locale display (comma as decimal separator)."""
+    if value is None:
+        return ""
+    s = str(value)
+    # Replace only the last dot (decimal separator), leave others intact
+    if "." in s:
+        s = s.replace(".", ",")
+    return s
+
+
+templates.env.filters["plnum"] = _plnum
+
 router = APIRouter(tags=["ui"])
 
 

@@ -48,7 +48,7 @@
                     {% endif %}
                 </td>
                 <td>{{ item.accounting_qualified if item.accounting_qualified is not none else '-' }}</td>
-                <td>{{ item.gross_total }}</td>
+                <td>{{ item.gross_total|plnum }}</td>
                 <td><a class="btn-detail" href="/ui/invoices/{{ item.id }}">Szczegóły</a></td>
             </tr>
         {% endfor %}
