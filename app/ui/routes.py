@@ -117,6 +117,7 @@ def ui_worker_status(
     Uses cookie auth directly so the browser-side fetch gets JSON 401
     instead of an HTML login-page redirect.
     """
+    import json as _json
     from fastapi.responses import JSONResponse
     from app.db.models.worker_heartbeat import WorkerHeartbeat
 
@@ -125,8 +126,7 @@ def ui_worker_status(
     except UIAuthRequired:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
 
-    IDLE_WARN_SECONDS = 180   # 3 minutes – worker is idle but still checked in recently
-    STALE_SECONDS = 300       # 5 minutes – worker likely stopped
+    STALE_SECONDS = settings.scheduler_stale_seconds
 
     now = datetime.now(tz=timezone.utc)
     heartbeats = (
@@ -152,42 +152,57 @@ def ui_worker_status(
         or 0
     )
 
-    workers = []
-    any_warning = False
-    all_stale = True
+    # Find the scheduler heartbeat
+    scheduler_hb = None
     for hb in heartbeats:
-        hb_time = hb.last_heartbeat_at
+        if hb.worker_id == "scheduler":
+            scheduler_hb = hb
+            break
+
+    is_running = False
+    seconds_since_heartbeat = None
+    hb_status = None
+    hb_job_type = None
+    hb_job_id = None
+    if scheduler_hb:
+        hb_time = scheduler_hb.last_heartbeat_at
         if hb_time.tzinfo is None:
             hb_time = hb_time.replace(tzinfo=timezone.utc)
-        seconds_ago = max(0, int((now - hb_time).total_seconds()))
-        is_stale = seconds_ago >= STALE_SECONDS
-        is_idle_too_long = not is_stale and hb.status == "IDLE" and seconds_ago >= IDLE_WARN_SECONDS
-        if not is_stale:
-            all_stale = False
-        if is_idle_too_long:
-            any_warning = True
-        workers.append(
-            {
-                "worker_id": hb.worker_id,
-                "status": hb.status,
-                "current_job_type": hb.current_job_type,
-                "current_job_id": hb.current_job_id,
-                "last_heartbeat_seconds_ago": seconds_ago,
-                "is_idle_too_long": is_idle_too_long,
-                "is_stale": is_stale,
-            }
-        )
+        seconds_since_heartbeat = max(0, int((now - hb_time).total_seconds()))
+        is_running = seconds_since_heartbeat < STALE_SECONDS
+        hb_status = scheduler_hb.status
+        hb_job_type = scheduler_hb.current_job_type
+        hb_job_id = scheduler_hb.current_job_id
 
-    # Only warn if ALL workers are stale (no healthy worker exists)
-    if heartbeats and all_stale:
-        any_warning = True
+    # Determine phase from DB heartbeat + in-memory state (if same process)
+    # Priority: DB heartbeat is the source of truth for running/not-running.
+    if not is_running:
+        phase = "idle"
+        current_jobs = []
+    elif hb_status == "ACTIVE":
+        phase = "processing"
+        # Read job list from DB
+        current_jobs = _json.loads(scheduler_hb.current_jobs_json) if scheduler_hb.current_jobs_json else []
+        if not current_jobs and hb_job_type:
+            current_jobs = [{"job_id": hb_job_id, "job_type": hb_job_type, "status": "running"}]
+    else:
+        # Heartbeat is IDLE and fresh → read phase from DB
+        db_phase = scheduler_hb.phase if scheduler_hb else None
+        if db_phase == "cooldown":
+            phase = "cooldown"
+            current_jobs = _json.loads(scheduler_hb.current_jobs_json) if scheduler_hb.current_jobs_json else []
+        else:
+            phase = "idle"
+            current_jobs = []
 
     return JSONResponse(
         {
-            "workers": workers,
+            "running": is_running,
+            "seconds_since_heartbeat": seconds_since_heartbeat,
+            "phase": phase,
+            "current_jobs": current_jobs,
             "queue": {"new": new_count, "processing": processing_count},
-            "any_worker_stale": all_stale if heartbeats else False,
-            "any_worker_warning": any_warning,
+            "scheduler_interval": settings.scheduler_interval,
         }
     )
 

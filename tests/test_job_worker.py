@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-from app.workers.job_worker import JobWorker
-import app.workers.job_worker as job_worker_module
+from app.workers.scheduler import Scheduler
+import app.workers.scheduler as scheduler_module
 
 
 class FakeSession:
@@ -31,7 +31,7 @@ class FakeNotificationService:
         return SimpleNamespace(id=notification_id, status="FAILED", error_message="smtp offline")
 
 
-def test_process_next_job_reschedules_failed_notification(monkeypatch) -> None:
+def test_process_all_jobs_reschedules_failed_notification(monkeypatch) -> None:
     fake_db = FakeSession()
     job = SimpleNamespace(
         id=10,
@@ -40,7 +40,7 @@ def test_process_next_job_reschedules_failed_notification(monkeypatch) -> None:
         status="PROCESSING",
         attempts=1,
         max_attempts=3,
-        locked_by="job_worker:test",
+        locked_by="scheduler",
         locked_at=datetime.now(tz=timezone.utc),
         finished_at=None,
         scheduled_at=datetime.now(tz=timezone.utc),
@@ -48,19 +48,19 @@ def test_process_next_job_reschedules_failed_notification(monkeypatch) -> None:
         response_payload=None,
     )
 
-    monkeypatch.setattr(job_worker_module, "SessionLocal", lambda: fake_db)
-    monkeypatch.setattr(job_worker_module, "NotificationService", FakeNotificationService)
+    monkeypatch.setattr(scheduler_module, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(scheduler_module, "NotificationService", FakeNotificationService)
 
-    worker = JobWorker()
-    monkeypatch.setattr(worker, "_claim_next_job", lambda db: job)
+    scheduler = Scheduler()
+    monkeypatch.setattr(scheduler, "_claim_all_jobs", lambda db: [job])
+    monkeypatch.setattr(scheduler, "_write_heartbeat", lambda *a, **kw: None)
 
-    processed = worker.process_next_job()
+    scheduler.process_all_jobs()
 
-    assert processed is False
     assert job.status == "NEW"
     assert job.last_error_message == "smtp offline"
     assert job.locked_by is None
     assert job.locked_at is None
     assert job.scheduled_at > datetime.now(tz=timezone.utc)
-    assert fake_db.commit_calls == 1
+    assert fake_db.commit_calls >= 1
     assert fake_db.closed is True

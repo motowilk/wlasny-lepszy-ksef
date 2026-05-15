@@ -2,14 +2,14 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>{{ title or "KSeF ERP App" }}</title>
+    <title>{{ title or "WŁASNY LEPSZY KSeF" }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="/static/styles.css" rel="stylesheet">
 </head>
 <body>
     <header class="topbar">
         <div class="container topbar-inner">
-            <a href="/ui" class="brand">KSeF ERP App</a>
+            <a href="/ui" class="brand">WŁASNY LEPSZY KSeF</a>
 
             <nav class="nav">
                 <a href="/ui">Dashboard</a>
@@ -42,106 +42,199 @@
 <script>
 (function () {
     var container = document.getElementById('ws-container');
+    var _schedulerInterval = 180;
+    var _countdownTimer = null;
+    var _downtimeTimer = null;
+    var _cooldownTimer = null;
+    var _lastPhase = null;
+    var _lastRunning = null;
 
-    function wsAge(s) {
-        if (s < 60) return s + 's';
-        if (s < 3600) return Math.floor(s / 60) + 'min';
-        return Math.floor(s / 3600) + 'h';
+    function wsJobDescription(jobType) {
+        var map = {
+            'FETCH_KSEF_PURCHASES': 'Pobieranie faktur zakupowych',
+            'SEND_TO_KSEF': 'Wysyłanie do KSeF',
+            'POLL_KSEF_STATUS': 'Sprawdzanie statusu KSeF',
+            'SEND_BOOKED_NOTIFICATION': 'Wysyłanie powiadomienia',
+            'SEND_ACCOUNTING_BATCH': 'Batch księgowy'
+        };
+        return map[jobType] || jobType || 'Przetwarzanie';
     }
 
-    function wsClose(toast) {
-        if (toast._wsTimer) clearTimeout(toast._wsTimer);
-        toast.classList.add('ws-closing');
-        setTimeout(function () {
-            if (toast.parentNode) toast.parentNode.removeChild(toast);
-        }, 280);
+    function wsStopAllTimers() {
+        if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+        if (_downtimeTimer) { clearInterval(_downtimeTimer); _downtimeTimer = null; }
+        if (_cooldownTimer) { clearTimeout(_cooldownTimer); _cooldownTimer = null; }
     }
 
-    function wsHandleData(data) {
-        var workers   = data.workers || [];
-        var q         = data.queue   || {};
-        var anyActive = workers.some(function (w) { return w.status === 'ACTIVE'; });
-        var anyWarn   = workers.some(function (w) { return w.is_idle_too_long; });
-        var allStale  = data.any_worker_stale;
-        var anyHealthy = workers.some(function (w) { return !w.is_stale; });
+    function wsRender(data) {
+        if (data.scheduler_interval) _schedulerInterval = data.scheduler_interval;
 
-        var type  = (allStale && !anyHealthy) ? 'stale' : anyWarn ? 'warn' : anyActive ? 'active' : 'idle';
-        var title = (allStale && !anyHealthy)  ? '\u26d4\ufe0f Worker \u2014 brak sygna\u0142u'
-                  : anyWarn   ? '\u26a0\ufe0f Worker \u2014 idle > 3\u202fmin'
-                  : anyActive ? '\u25b6\ufe0f Workers \u2014 aktywny'
-                  :             '\u25cb Workers \u2014 bezczynny';
+        var running = data.running;
+        var phase = data.phase;       // "idle" | "processing" | "cooldown"
+        var jobs = data.current_jobs || [];
+        var queue = data.queue || {};
 
-        /* --- worker rows --- */
-        var workersHtml;
-        if (!workers.length) {
-            workersHtml =
-                '<div class="ws-toast-worker">' +
-                    '<span class="ws-toast-worker-icon">\u25cb</span>' +
-                    '<div class="ws-toast-worker-info">' +
-                        '<div class="ws-toast-worker-name">Brak zarejestrowanych worker\u00f3w</div>' +
-                        '<div class="ws-toast-worker-detail">Uruchom job_worker lub scheduler</div>' +
-                    '</div>' +
-                '</div>';
-        } else {
-            workersHtml = workers.map(function (w) {
-                var icon = w.is_stale       ? '\u26d4'
-                         : w.is_idle_too_long ? '\u26a0'
-                         : w.status === 'ACTIVE' ? '\u25b6' : '\u25cb';
-                var dCls = w.is_stale         ? 'ws-detail-stale'
-                         : w.is_idle_too_long  ? 'ws-detail-warn'
-                         : w.status === 'ACTIVE' ? 'ws-detail-active' : '';
-                var detail = w.is_stale
-                    ? 'brak sygnału · ' + wsAge(w.last_heartbeat_seconds_ago) + ' temu'
-                    : w.status === 'ACTIVE' && w.current_job_type
-                        ? w.current_job_type + (w.current_job_id ? '\u00a0#' + w.current_job_id : '')
-                        : 'bezczynny · ' + wsAge(w.last_heartbeat_seconds_ago) + ' temu';
-                var displayName = w.worker_id.split(':')[0];  /* strip :PID */
-                return '<div class="ws-toast-worker">' +
-                    '<span class="ws-toast-worker-icon">' + icon + '</span>' +
-                    '<div class="ws-toast-worker-info">' +
-                        '<div class="ws-toast-worker-name">' + displayName + '</div>' +
-                        '<div class="ws-toast-worker-detail ' + dCls + '">' + detail + '</div>' +
-                    '</div>' +
-                '</div>';
-            }).join('');
+        // Skip re-render for stable states (processing always re-renders for task progress)
+        if (running && _lastRunning === true) {
+            if (phase === 'idle' && _lastPhase === 'idle') return;
+            if (phase === 'cooldown' && _lastPhase === 'cooldown') return;
         }
 
-        /* --- queue footer --- */
-        var qHtml =
-            '<div class="ws-toast-queue">' +
-                '\ud83d\udce5\u00a0Kolejka:&nbsp;' +
-                '<strong>' + (q.new || 0) + '</strong>\u00a0oczekuj\u0105ce' +
-                '<span class="ws-toast-queue-sep">&nbsp;\u00b7&nbsp;</span>' +
-                '<strong>' + (q.processing || 0) + '</strong>\u00a0w\u00a0toku' +
-            '</div>';
+        wsStopAllTimers();
 
+        var html;
+        var toastClass;
+
+        if (!running) {
+            // ─── RED: worker not running ───────────────────────────────
+            toastClass = 'ws-toast ws-toast-down';
+            var downSec = data.seconds_since_heartbeat || 0;
+            html =
+                '<div class="ws-toast-head">' +
+                    '<span class="ws-toast-title">⛔ Scheduler — brak sygnału</span>' +
+                    '<button class="ws-toast-x" title="Zamknij">&#x2715;</button>' +
+                '</div>' +
+                '<div class="ws-toast-body">' +
+                    '<div class="ws-toast-downtime" id="ws-downtime">Niedostępny od ' + wsFormatDuration(downSec) + '</div>' +
+                '</div>' +
+                '<div class="ws-toast-bar"><div class="ws-toast-fill ws-fill-down"></div></div>';
+
+            // Start ascending downtime counter
+            _downtimeTimer = setInterval(function () {
+                downSec++;
+                var el = document.getElementById('ws-downtime');
+                if (el) el.textContent = 'Niedostępny od ' + wsFormatDuration(downSec);
+            }, 1000);
+
+        } else if (phase === 'processing') {
+            // ─── GREEN ACTIVE: processing jobs ─────────────────────────
+            toastClass = 'ws-toast ws-toast-active';
+            var jobsHtml = '';
+            var pendingCount = 0;
+            var inProgressCount = 0;
+            for (var i = 0; i < jobs.length; i++) {
+                var j = jobs[i];
+                var icon, statusText, cls;
+                if (j.status === 'done') {
+                    icon = '✅'; statusText = ''; cls = 'ws-job-done';
+                } else if (j.status === 'failed') {
+                    icon = '❌'; statusText = ''; cls = 'ws-job-failed';
+                } else if (j.status === 'running') {
+                    icon = '⏳'; statusText = '<span class="ws-dots"></span><div class="ws-job-progress"><div class="ws-job-progress-fill"></div></div>'; cls = 'ws-job-running';
+                    inProgressCount++;
+                } else if (j.status === 'skipped') {
+                    icon = '⊘'; statusText = ''; cls = 'ws-job-skipped';
+                } else {
+                    icon = '○'; statusText = ''; cls = 'ws-job-pending';
+                    pendingCount++;
+                }
+                jobsHtml +=
+                    '<div class="ws-job-row ' + cls + '">' +
+                        '<span class="ws-job-icon">' + icon + '</span>' +
+                        '<span class="ws-job-name">' + wsJobDescription(j.job_type) + '</span>' +
+                        statusText +
+                    '</div>';
+            }
+
+            html =
+                '<div class="ws-toast-head">' +
+                    '<span class="ws-toast-title">▶️ Scheduler — przetwarzam</span>' +
+                    '<button class="ws-toast-x" title="Zamknij">&#x2715;</button>' +
+                '</div>' +
+                '<div class="ws-toast-body ws-toast-jobs">' + jobsHtml +
+                    '<div class="ws-toast-queue">📥 Kolejka: <strong>' + pendingCount + '</strong> oczekujące · <strong>' + inProgressCount + '</strong> w toku</div>' +
+                '</div>' +
+                '<div class="ws-toast-bar"><div class="ws-toast-fill ws-fill-active ws-fill-animated"></div></div>';
+
+        } else if (phase === 'cooldown') {
+            // ─── GREEN COOLDOWN: jobs done, showing results before reset
+            toastClass = 'ws-toast ws-toast-active';
+            var jobsHtml2 = '';
+            for (var k = 0; k < jobs.length; k++) {
+                var jj = jobs[k];
+                var ic = jj.status === 'done' ? '✅' : jj.status === 'failed' ? '❌' : jj.status === 'skipped' ? '⊘' : '○';
+                var cl = jj.status === 'done' ? 'ws-job-done' : jj.status === 'failed' ? 'ws-job-failed' : jj.status === 'skipped' ? 'ws-job-skipped' : '';
+                jobsHtml2 +=
+                    '<div class="ws-job-row ' + cl + '">' +
+                        '<span class="ws-job-icon">' + ic + '</span>' +
+                        '<span class="ws-job-name">' + wsJobDescription(jj.job_type) + '</span>' +
+                    '</div>';
+            }
+
+            html =
+                '<div class="ws-toast-head">' +
+                    '<span class="ws-toast-title">✅ Scheduler — zakończono</span>' +
+                    '<button class="ws-toast-x" title="Zamknij">&#x2715;</button>' +
+                '</div>' +
+                '<div class="ws-toast-body ws-toast-jobs">' + jobsHtml2 + '</div>' +
+                '<div class="ws-toast-bar"><div class="ws-toast-fill ws-fill-done"></div></div>';
+
+        } else {
+            // ─── GREEN IDLE: countdown to next run ─────────────────────
+            toastClass = 'ws-toast ws-toast-idle';
+            var elapsed = data.seconds_since_heartbeat || 0;
+            var remaining = Math.max(0, _schedulerInterval - (elapsed % _schedulerInterval));
+            if (remaining === 0) remaining = _schedulerInterval;
+
+            html =
+                '<div class="ws-toast-head">' +
+                    '<span class="ws-toast-title">✓ Scheduler — aktywny</span>' +
+                    '<button class="ws-toast-x" title="Zamknij">&#x2715;</button>' +
+                '</div>' +
+                '<div class="ws-toast-body">' +
+                    '<div class="ws-toast-countdown" id="ws-countdown">Następne sprawdzenie za ' + remaining + 's</div>' +
+                    '<div class="ws-toast-queue">📥 Kolejka: <strong>' + (queue.new || 0) + '</strong> oczekujące · <strong>' + (queue.processing || 0) + '</strong> w toku</div>' +
+                '</div>' +
+                '<div class="ws-toast-bar"><div class="ws-toast-fill ws-fill-idle"></div></div>';
+
+            // Start countdown
+            _countdownTimer = setInterval(function () {
+                remaining--;
+                var el = document.getElementById('ws-countdown');
+                if (!el) { wsStopAllTimers(); return; }
+                if (remaining <= 0) {
+                    el.textContent = 'sprawdzam...';
+                    wsStopAllTimers();
+                    _lastPhase = null; // allow next poll to re-render
+                } else {
+                    el.textContent = 'Następne sprawdzenie za ' + remaining + 's';
+                }
+            }, 1000);
+        }
+
+        // Render toast
+        container.innerHTML = '';
         var toast = document.createElement('div');
-        toast.className = 'ws-toast ws-toast-' + type;
-        toast.innerHTML =
-            '<div class="ws-toast-head">' +
-                '<span class="ws-toast-title">' + title + '</span>' +
-                '<button class="ws-toast-x" title="Zamknij">&#x2715;</button>' +
-            '</div>' +
-            '<div class="ws-toast-workers">' + workersHtml + '</div>' +
-            qHtml +
-            '<div class="ws-toast-bar"><div class="ws-toast-fill ws-fill-' + type + '"></div></div>';
-
-        toast.querySelector('.ws-toast-x').addEventListener('click', function () {
-            wsClose(toast);
+        toast.className = toastClass;
+        toast.innerHTML = html;
+        var xBtn = toast.querySelector('.ws-toast-x');
+        if (xBtn) xBtn.addEventListener('click', function () {
+            toast.classList.add('ws-closing');
+            setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 280);
         });
         container.appendChild(toast);
-        toast._wsTimer = setTimeout(function () { wsClose(toast); }, 30000);
+
+        _lastPhase = phase;
+        _lastRunning = running;
+    }
+
+    function wsFormatDuration(sec) {
+        if (sec < 60) return sec + 's';
+        var m = Math.floor(sec / 60);
+        var s = sec % 60;
+        if (m < 60) return m + 'min ' + s + 's';
+        return Math.floor(m / 60) + 'h ' + (m % 60) + 'min';
     }
 
     function wsRefresh() {
         fetch('/ui/api/worker-status')
             .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (data) { if (data) wsHandleData(data); })
+            .then(function (data) { if (data) wsRender(data); })
             .catch(function () {});
     }
 
     wsRefresh();
-    setInterval(wsRefresh, 30000);
+    setInterval(wsRefresh, 2000);
 }());
 </script>
 {% endif %}

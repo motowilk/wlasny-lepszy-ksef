@@ -1,5 +1,5 @@
 /* ==========================================
-   KSeF ERP App — minimalne style
+   WŁASNY LEPSZY KSeF — minimalne style
    ========================================== */
 
 *, *::before, *::after {
@@ -331,14 +331,12 @@ h2 {
 
 /* Accent colours + header tints per status */
 .ws-toast-active { border-left-color: #2e7d32; }
-.ws-toast-idle   { border-left-color: #1565c0; }
-.ws-toast-warn   { border-left-color: #e65100; }
-.ws-toast-stale  { border-left-color: #b71c1c; }
+.ws-toast-idle   { border-left-color: #2e7d32; }
+.ws-toast-down   { border-left-color: #b71c1c; }
 
 .ws-toast-active .ws-toast-head { background: #f1f8e9; }
-.ws-toast-idle   .ws-toast-head { background: #e8f0fe; }
-.ws-toast-warn   .ws-toast-head { background: #fff3e0; }
-.ws-toast-stale  .ws-toast-head { background: #ffebee; }
+.ws-toast-idle   .ws-toast-head { background: #f1f8e9; }
+.ws-toast-down   .ws-toast-head { background: #ffebee; }
 
 /* Header */
 .ws-toast-head {
@@ -369,64 +367,97 @@ h2 {
 }
 .ws-toast-x:hover { color: #333; }
 
-/* Worker rows */
-.ws-toast-workers {
-    padding: 8px 14px 4px 14px;
+/* Toast body */
+.ws-toast-body {
+    padding: 10px 14px;
 }
 
-.ws-toast-worker {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 5px 0;
-    border-bottom: 1px solid #f3f4f6;
-}
-.ws-toast-worker:last-child { border-bottom: none; }
-
-.ws-toast-worker-icon {
-    font-size: 11px;
-    padding-top: 2px;
-    flex-shrink: 0;
-    width: 14px;
-    text-align: center;
-}
-
-.ws-toast-worker-info { flex: 1; min-width: 0; }
-
-.ws-toast-worker-name {
+.ws-toast-countdown {
     font-size: 12px;
+    color: #2e7d32;
     font-weight: 600;
-    color: #1a2c42;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    margin-bottom: 4px;
 }
 
-.ws-toast-worker-detail {
-    font-size: 11px;
-    color: #6b7280;
-    margin-top: 1px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.ws-toast-downtime {
+    font-size: 12px;
+    color: #b71c1c;
+    font-weight: 600;
 }
-.ws-detail-active { color: #2e7d32; font-weight: 600; }
-.ws-detail-warn   { color: #e65100; }
-.ws-detail-stale  { color: #b71c1c; }
 
 /* Queue footer */
 .ws-toast-queue {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 7px 14px 8px 14px;
-    background: #f8fafc;
-    border-top: 1px solid #edf0f3;
     font-size: 11px;
     color: #555;
+    margin-top: 4px;
 }
 .ws-toast-queue strong { color: #1e3a5f; font-size: 12px; }
-.ws-toast-queue-sep { color: #c0c8d0; }
+
+/* Job rows (processing phase) */
+.ws-toast-jobs {
+    padding: 8px 14px;
+}
+
+.ws-job-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+    color: #1a2c42;
+    flex-wrap: wrap;
+}
+.ws-job-row.ws-job-done { color: #2e7d32; }
+.ws-job-row.ws-job-failed { color: #b71c1c; }
+.ws-job-row.ws-job-skipped { color: #9e9e9e; font-style: italic; }
+.ws-job-row.ws-job-pending { color: #9e9e9e; }
+
+.ws-job-icon {
+    font-size: 13px;
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.ws-job-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+/* Animated dots for running jobs */
+.ws-dots::after {
+    content: '';
+    animation: ws-dots-anim 1.4s steps(4, end) infinite;
+}
+@keyframes ws-dots-anim {
+    0%  { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+}
+
+/* Mini progress bar for running task row */
+.ws-job-progress {
+    flex-basis: 100%;
+    height: 3px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+    margin-left: 26px;
+}
+.ws-job-progress-fill {
+    height: 100%;
+    background: #2e7d32;
+    border-radius: 2px;
+    transform-origin: left center;
+    animation: ws-job-progress-anim 2s linear forwards;
+}
+@keyframes ws-job-progress-anim {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+
 
 /* Progress bar */
 .ws-toast-bar {
@@ -439,17 +470,28 @@ h2 {
     height: 100%;
     width: 100%;
     transform-origin: left center;
-    animation: ws-progress 30s linear forwards;
 }
 
 .ws-fill-active { background: #2e7d32; }
-.ws-fill-idle   { background: #1565c0; }
-.ws-fill-warn   { background: #e65100; }
-.ws-fill-stale  { background: #b71c1c; }
+.ws-fill-idle   { background: #2e7d32; animation: ws-progress-idle 30s linear forwards; }
+.ws-fill-down   { background: #b71c1c; animation: none; transform: scaleX(1); }
+.ws-fill-done   { background: #388e3c; animation: ws-progress-cooldown 15s linear forwards; transform: scaleX(1); }
+.ws-fill-animated { animation: ws-progress-pulse 2s ease-in-out infinite; }
 
-@keyframes ws-progress {
+@keyframes ws-progress-idle {
     from { transform: scaleX(1); }
     to   { transform: scaleX(0); }
+}
+
+@keyframes ws-progress-cooldown {
+    from { transform: scaleX(1); }
+    to   { transform: scaleX(0); }
+}
+
+@keyframes ws-progress-pulse {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.4; }
+    100% { opacity: 1; }
 }
 
 /* ── KSeF status badges ────────────────────────────────────────────────────── */

@@ -969,9 +969,9 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ```bash
-python3 -m app.workers.job_worker
+python3 -m app.workers.job_worker    
 # lub
-python3 -m app.workers.scheduler
+python3 -m app.workers.scheduler.  # uzywaj tego, on regularnie startuje job_workera
 ```
 
 ## Krok 14. Uruchom testy

@@ -58,7 +58,7 @@ class KsefService:
                 event_type="KSEF_SEND_STARTED",
                 event_status="SUCCESS",
                 actor_type="WORKER",
-                actor_id="job_worker",
+                actor_id="scheduler",
                 message="Rozpoczęto wysyłkę do KSeF.",
                 details={"job_id": job.id},
             )
@@ -107,23 +107,17 @@ class KsefService:
                 event_type="KSEF_ACCEPTED",
                 event_status="SUCCESS",
                 actor_type="WORKER",
-                actor_id="job_worker",
+                actor_id="scheduler",
                 message="Mock KSeF zaakceptował dokument.",
                 details={"ksef_number": ksef_number},
             )
         )
 
-        job.status = "DONE"
-        job.finished_at = datetime.now(tz=timezone.utc)
         job.response_payload = {
             "status": "ACCEPTED",
             "ksef_number": ksef_number,
             "invoice_id": invoice.id,
         }
-        _release_job_lock(job)
-
-        db.commit()
-        db.refresh(job)
         return job
 
     @staticmethod
@@ -145,7 +139,7 @@ class KsefService:
                 event_type="KSEF_SENT",
                 event_status="SUCCESS",
                 actor_type="WORKER",
-                actor_id="job_worker",
+                actor_id="scheduler",
                 message="Faktura wysłana do KSeF — oczekiwanie na akceptację.",
                 details={
                     "invoice_ref": result["invoice_ref"],
@@ -167,17 +161,11 @@ class KsefService:
         )
         db.add(poll_job)
 
-        job.status = "DONE"
-        job.finished_at = datetime.now(tz=timezone.utc)
         job.response_payload = {
             "status": "SENT",
             "invoice_ref": result["invoice_ref"],
             "session_ref": result["session_ref"],
         }
-        _release_job_lock(job)
-
-        db.commit()
-        db.refresh(job)
         return job
 
     @staticmethod
@@ -201,12 +189,7 @@ class KsefService:
             raise ValueError("Brak session_ref lub invoice_ref w request_payload.")
 
         if job.attempts >= job.max_attempts:
-            job.status = "FAILED"
-            job.last_error_message = "Przekroczono max_attempts dla POLL_KSEF_STATUS."
-            job.finished_at = datetime.now(tz=timezone.utc)
-            _release_job_lock(job)
-            db.commit()
-            return job
+            raise ValueError("Przekroczono max_attempts dla POLL_KSEF_STATUS.")
 
         settings = get_settings()
         if settings.ksef_mode == "live":
@@ -232,14 +215,12 @@ class KsefService:
                     event_type="KSEF_ACCEPTED",
                     event_status="SUCCESS",
                     actor_type="WORKER",
-                    actor_id="job_worker",
+                    actor_id="scheduler",
                     message="KSeF zaakceptował dokument.",
                     details={"ksef_number": ksef_number},
                 )
             )
 
-            job.status = "DONE"
-            job.finished_at = datetime.now(tz=timezone.utc)
             job.response_payload = {"ksefNumber": ksef_number}
 
         elif status_code >= 400:
@@ -251,7 +232,7 @@ class KsefService:
                     event_type="KSEF_REJECTED",
                     event_status="ERROR",
                     actor_type="WORKER",
-                    actor_id="job_worker",
+                    actor_id="scheduler",
                     message=f"KSeF odrzucił dokument: {error_desc}",
                     details={"status": status},
                 )
@@ -259,19 +240,14 @@ class KsefService:
 
             invoice.ksef_status_code = "REJECTED"
             invoice.erp_status = "KSEF_REJECTED"
-            job.status = "FAILED"
-            job.last_error_message = error_desc
-            job.finished_at = datetime.now(tz=timezone.utc)
-            _release_job_lock(job)
+            raise RuntimeError(error_desc)
 
         else:
-            # Still processing — re-queue for next worker tick
+            # Still processing — signal the caller to re-queue
+            job.response_payload = {"poll_status": "PENDING"}
             job.status = "NEW"
             job.scheduled_at = datetime.now(tz=timezone.utc) + _poll_retry_delay(job.attempts)
-            _release_job_lock(job)
 
-        db.commit()
-        db.refresh(job)
         return job
 
     @staticmethod

@@ -1,37 +1,366 @@
+import json
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from sqlalchemy import delete, select
 
 from app.core.config import settings
-from app.workers.job_worker import JobWorker
+from app.db.models import IntegrationJob, WorkerHeartbeat
+from app.db.session import SessionLocal
+from app.services.ksef_service import KsefService
+from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
+# ─── Shared state for the worker-status API ────────────────────────────────
+# Updated by the scheduler tick; read by /ui/api/worker-status.
+scheduler_state: dict = {
+    "running": False,
+    "last_tick_at": None,
+    "last_job_finished_at": None,
+    "current_jobs": [],       # list of {"job_id", "job_type", "status": "pending"|"running"|"done"|"failed"}
+    "phase": "idle",          # "idle" | "processing" | "cooldown"
+}
+
+
+class Scheduler:
+    WORKER_ID = "scheduler"
+
+    def __init__(self) -> None:
+        self._scheduler: BackgroundScheduler | None = None
+
+    # ─── Retry helpers ──────────────────────────────────────────────────
+    @staticmethod
+    def _retry_delay(attempts: int) -> timedelta:
+        delay_seconds = min(300, 5 * (2 ** max(attempts - 1, 0)))
+        return timedelta(seconds=delay_seconds)
+
+    @staticmethod
+    def _release_job_lock(job: IntegrationJob) -> None:
+        job.locked_by = None
+        job.locked_at = None
+
+    # ─── Heartbeat ──────────────────────────────────────────────────────
+    def _write_heartbeat(
+        self,
+        status: str,
+        job_type: str | None = None,
+        job_id: int | None = None,
+        phase: str | None = None,
+        current_jobs: list | None = None,
+    ) -> None:
+        db = SessionLocal()
+        try:
+            now = datetime.now(tz=timezone.utc)
+            jobs_json = json.dumps(current_jobs) if current_jobs is not None else None
+            heartbeat = db.execute(
+                select(WorkerHeartbeat).where(WorkerHeartbeat.worker_id == self.WORKER_ID)
+            ).scalars().first()
+            if heartbeat:
+                heartbeat.last_heartbeat_at = now
+                heartbeat.status = status
+                heartbeat.current_job_type = job_type
+                heartbeat.current_job_id = job_id
+                if phase is not None:
+                    heartbeat.phase = phase
+                if jobs_json is not None:
+                    heartbeat.current_jobs_json = jobs_json
+            else:
+                db.execute(
+                    delete(WorkerHeartbeat).where(
+                        WorkerHeartbeat.worker_id.like(self.WORKER_ID + ":%")
+                    )
+                )
+                db.add(
+                    WorkerHeartbeat(
+                        worker_id=self.WORKER_ID,
+                        last_heartbeat_at=now,
+                        status=status,
+                        current_job_type=job_type,
+                        current_job_id=job_id,
+                        phase=phase or "idle",
+                        current_jobs_json=jobs_json,
+                    )
+                )
+            db.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Heartbeat write failed: %s", exc)
+            db.rollback()
+        finally:
+            db.close()
+
+    # ─── Claim all eligible jobs ────────────────────────────────────────
+    def _claim_all_jobs(self, db) -> list[IntegrationJob]:
+        now = datetime.now(tz=timezone.utc)
+        stmt = (
+            select(IntegrationJob)
+            .where(
+                IntegrationJob.status == "NEW",
+                IntegrationJob.scheduled_at <= now,
+            )
+            .order_by(IntegrationJob.priority.asc(), IntegrationJob.id.asc())
+            .with_for_update(skip_locked=True)
+        )
+
+        with db.begin():
+            jobs = db.execute(stmt).scalars().all()
+            for job in jobs:
+                job.status = "PROCESSING"
+                job.locked_by = self.WORKER_ID
+                job.locked_at = now
+                job.started_at = job.started_at or now
+                job.attempts = (job.attempts or 0) + 1
+
+        for job in jobs:
+            db.refresh(job)
+        return list(jobs)
+
+    # ─── Execute a single job ───────────────────────────────────────────
+    def _execute_job(self, db, job: IntegrationJob) -> None:
+        """Run job logic. On success, marks DONE. On failure, raises."""
+        if job.job_type == "SEND_TO_KSEF":
+            KsefService.process_send_to_ksef_job(db, job)
+
+        elif job.job_type == "POLL_KSEF_STATUS":
+            KsefService.process_poll_ksef_status_job(db, job)
+            # POLL may re-queue itself (status set to NEW inside service)
+            if job.status == "NEW":
+                self._release_job_lock(job)
+                db.commit()
+                return
+
+        elif job.job_type == "SEND_BOOKED_NOTIFICATION":
+            invoice_id = (job.request_payload or {}).get("invoice_id")
+            if not invoice_id:
+                raise ValueError("Brak invoice_id w request_payload.")
+            notification = NotificationService.create_invoice_notification(db, invoice_id)
+            notification = NotificationService.send_notification(db, notification.id)
+            if notification.status != "SENT":
+                raise RuntimeError(
+                    notification.error_message or "Wysyłka powiadomienia zakończyła się błędem."
+                )
+
+        elif job.job_type == "SEND_ACCOUNTING_BATCH":
+            from app.services.accounting_service import AccountingService
+            batch_id = int(job.related_entity_id or "0")
+            AccountingService.send_accounting_batch_notification(db, batch_id)
+            job.response_payload = {"status": "BATCH_NOTIFICATION_SENT", "batch_id": batch_id}
+
+        elif job.job_type == "FETCH_KSEF_PURCHASES":
+            from app.services.ksef_import_service import KsefImportService
+            req = job.request_payload or {}
+            date_from = req.get("date_from", "")
+            date_to = req.get("date_to", "")
+            if not date_from or not date_to:
+                raise ValueError("FETCH_KSEF_PURCHASES wymaga date_from i date_to w request_payload.")
+            imported = KsefImportService.fetch_and_import_purchases(
+                db=db,
+                date_from=date_from,
+                date_to=date_to,
+                actor_id=self.WORKER_ID,
+            )
+            job.response_payload = {
+                "status": "PURCHASES_FETCHED",
+                "imported_count": len(imported),
+                "imported_ids": [inv.id for inv in imported],
+            }
+
+        else:
+            raise ValueError(f"Nieobsługiwany job_type={job.job_type}")
+
+        # Unified lifecycle management for successful jobs
+        job.status = "DONE"
+        job.finished_at = datetime.now(tz=timezone.utc)
+        self._release_job_lock(job)
+        db.commit()
+
+    def _fail_job(self, db, job: IntegrationJob, exc: Exception) -> None:
+        job.status = "FAILED"
+        job.last_error_message = str(exc)
+        job.finished_at = datetime.now(tz=timezone.utc)
+        self._release_job_lock(job)
+        db.commit()
+
+    def _reschedule_job(self, db, job: IntegrationJob, exc: Exception) -> None:
+        job.status = "NEW"
+        job.last_error_message = str(exc)
+        job.scheduled_at = datetime.now(tz=timezone.utc) + self._retry_delay(job.attempts)
+        job.finished_at = None
+        self._release_job_lock(job)
+        db.commit()
+
+    # All known job types — shown in toast on every tick
+    JOB_TYPES = [
+        "SEND_TO_KSEF",
+        "POLL_KSEF_STATUS",
+        "SEND_BOOKED_NOTIFICATION",
+        "SEND_ACCOUNTING_BATCH",
+        "FETCH_KSEF_PURCHASES",
+    ]
+
+    # ─── Main tick: process ALL pending jobs ────────────────────────────
+    def process_all_jobs(self) -> None:
+        global scheduler_state
+
+        db = SessionLocal()
+        try:
+            jobs = self._claim_all_jobs(db)
+
+            # Build task list: one entry per known job type
+            # Jobs that have pending work get real entries; others are "skipped"
+            job_by_type: dict[str, list[IntegrationJob]] = {}
+            for job in jobs:
+                job_by_type.setdefault(job.job_type, []).append(job)
+
+            task_list = []
+            for jt in self.JOB_TYPES:
+                if jt in job_by_type:
+                    for j in job_by_type[jt]:
+                        task_list.append({"job_id": j.id, "job_type": jt, "status": "pending", "_job": j})
+                else:
+                    task_list.append({"job_id": None, "job_type": jt, "status": "skipped", "_job": None})
+
+            scheduler_state["phase"] = "processing"
+            scheduler_state["current_jobs"] = [
+                {"job_id": t["job_id"], "job_type": t["job_type"], "status": "pending"}
+                for t in task_list
+            ]
+            self._write_heartbeat(
+                "ACTIVE",
+                phase="processing",
+                current_jobs=scheduler_state["current_jobs"],
+            )
+
+            for idx, task in enumerate(task_list):
+                job = task["_job"]
+
+                # Mark as running (even if it will be skipped — show it briefly)
+                scheduler_state["current_jobs"][idx]["status"] = "running"
+                self._write_heartbeat(
+                    "ACTIVE", task["job_type"], task["job_id"],
+                    phase="processing",
+                    current_jobs=scheduler_state["current_jobs"],
+                )
+
+                # Pause so frontend can see the "running" state
+                time.sleep(2)
+
+                if job is None:
+                    # No work for this job type — mark skipped
+                    scheduler_state["current_jobs"][idx]["status"] = "skipped"
+                    self._write_heartbeat(
+                        "ACTIVE", task["job_type"], task["job_id"],
+                        phase="processing",
+                        current_jobs=scheduler_state["current_jobs"],
+                    )
+                    continue
+
+                logger.info("Processing job id=%s type=%s", job.id, job.job_type)
+
+                try:
+                    self._execute_job(db, job)
+                    scheduler_state["current_jobs"][idx]["status"] = "done"
+                    self._write_heartbeat(
+                        "ACTIVE", job.job_type, job.id,
+                        phase="processing",
+                        current_jobs=scheduler_state["current_jobs"],
+                    )
+                    logger.info("Job id=%s finished successfully", job.id)
+                except Exception as exc:
+                    logger.exception("Job id=%s failed: %s", job.id, exc)
+                    scheduler_state["current_jobs"][idx]["status"] = "failed"
+                    self._write_heartbeat(
+                        "ACTIVE", job.job_type, job.id,
+                        phase="processing",
+                        current_jobs=scheduler_state["current_jobs"],
+                    )
+                    try:
+                        db.rollback()
+                        if job.attempts >= job.max_attempts:
+                            self._fail_job(db, job, exc)
+                        else:
+                            self._reschedule_job(db, job, exc)
+                    except Exception:
+                        db.rollback()
+
+            # All jobs processed — enter cooldown (15s) to show results
+            now = datetime.now(tz=timezone.utc)
+            scheduler_state["phase"] = "cooldown"
+            scheduler_state["last_job_finished_at"] = now.isoformat()
+            scheduler_state["last_tick_at"] = now.isoformat()
+            self._write_heartbeat(
+                "IDLE",
+                phase="cooldown",
+                current_jobs=scheduler_state["current_jobs"],
+            )
+
+        finally:
+            db.close()
+
+    # ─── Scheduler lifecycle ────────────────────────────────────────────
+    def _heartbeat_tick(self) -> None:
+        """Lightweight periodic heartbeat so the toast stays green between job ticks.
+        Also transitions cooldown → idle after 15s."""
+        global scheduler_state
+        if scheduler_state.get("phase") == "cooldown":
+            last_finished = scheduler_state.get("last_job_finished_at")
+            if last_finished:
+                finished_dt = datetime.fromisoformat(last_finished)
+                if finished_dt.tzinfo is None:
+                    finished_dt = finished_dt.replace(tzinfo=timezone.utc)
+                if (datetime.now(tz=timezone.utc) - finished_dt).total_seconds() >= 15:
+                    scheduler_state["phase"] = "idle"
+                    scheduler_state["current_jobs"] = []
+                    self._write_heartbeat("IDLE", phase="idle", current_jobs=[])
+                    return
+        self._write_heartbeat("IDLE")
+
+    def start(self) -> None:
+        global scheduler_state
+        scheduler_state["running"] = True
+
+        self._scheduler = BackgroundScheduler()
+        self._scheduler.add_job(
+            self.process_all_jobs,
+            "interval",
+            seconds=settings.scheduler_interval,
+            id="scheduler_tick",
+            max_instances=1,
+            next_run_time=datetime.now(tz=timezone.utc),  # fire immediately on start
+        )
+        # Heartbeat every 5s keeps the toast green between job-processing ticks
+        self._scheduler.add_job(
+            self._heartbeat_tick,
+            "interval",
+            seconds=5,
+            id="heartbeat_tick",
+        )
+        self._scheduler.start()
+
+        logger.info("Scheduler started (interval: %ss).", settings.scheduler_interval)
+
+        # Write initial heartbeat
+        self._write_heartbeat("IDLE")
+        scheduler_state["last_tick_at"] = datetime.now(tz=timezone.utc).isoformat()
+
+    def stop(self) -> None:
+        global scheduler_state
+        scheduler_state["running"] = False
+        if self._scheduler:
+            self._scheduler.shutdown()
+        logger.info("Scheduler stopped.")
+
 
 def run_scheduler() -> None:
-    worker = JobWorker(name="scheduler")
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(
-        worker.process_next_job,
-        "interval",
-        seconds=settings.scheduler_interval,
-        id="job_worker_tick",
-        # Prevent concurrent invocations: if a job takes longer than the
-        # interval, APScheduler would otherwise spawn a second call while the
-        # first is still running, causing thread-unsafe access to the shared
-        # _real_ksef_client singleton and potential duplicate processing.
-        max_instances=1,
-    )
+    scheduler = Scheduler()
     scheduler.start()
-
-    logger.info("Scheduler started (interval: %ss).", settings.scheduler_interval)
     try:
         while True:
             time.sleep(60)
     except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
-        logger.info("Scheduler stopped.")
+        scheduler.stop()
 
 
 if __name__ == "__main__":

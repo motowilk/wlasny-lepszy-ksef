@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = Field(default="KSeF ERP App", alias="APP_NAME")
+    app_name: str = Field(default="WŁASNY LEPSZY KSeF", alias="APP_NAME")
     app_env: str = Field(default="dev", alias="APP_ENV")
     app_host: str = Field(default="127.0.0.1", alias="APP_HOST")
     app_port: int = Field(default=8000, alias="APP_PORT")
@@ -44,8 +44,8 @@ class Settings(BaseSettings):
     log_dir: str = Field(default="logs", alias="LOG_DIR")
 
     # Worker tuning
-    worker_poll_interval: int = Field(default=5, alias="WORKER_POLL_INTERVAL")
-    scheduler_interval: int = Field(default=10, alias="SCHEDULER_INTERVAL")
+    scheduler_interval: int = Field(default=180, alias="SCHEDULER_INTERVAL")
+    scheduler_stale_seconds: int = Field(default=30, alias="SCHEDULER_STALE_SECONDS")
 
     admin_default_password: str = Field(default="", alias="ADMIN_DEFAULT_PASSWORD")
     ui_session_max_age: int = Field(default=43200, alias="UI_SESSION_MAX_AGE")
