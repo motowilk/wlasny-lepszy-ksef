@@ -23,7 +23,7 @@ class Invoice(Base):
     )
     local_document_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     external_system_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    invoice_number: Mapped[str] = mapped_column(String(255), nullable=False)
+    invoice_number: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     ksef_number: Mapped[str | None] = mapped_column(String(128), unique=True, nullable=True)
     ksef_reference_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
     issue_date: Mapped[date] = mapped_column(Date, nullable=False)

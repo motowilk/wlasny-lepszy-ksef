@@ -39,6 +39,7 @@ from app.schemas.invoice import (
     InvoiceCreateRequest,
     InvoiceLinePayload,
     InvoicePartyPayload,
+    InvoiceUpdateRequest,
     PartyPayload,
 )
 from app.services.invoice_service import InvoiceService
@@ -660,6 +661,229 @@ async def invoice_create_submit(
     return RedirectResponse(url=f"/ui/invoices/{invoice.id}", status_code=303)
 
 
+@router.get("/ui/invoices/{invoice_id}/edit")
+def invoice_edit_form(
+    invoice_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent", "reviewer")),
+):
+    invoice = (
+        db.execute(
+            select(Invoice)
+            .options(
+                joinedload(Invoice.lines),
+                joinedload(Invoice.parties).joinedload(InvoiceParty.party),
+            )
+            .where(Invoice.id == invoice_id)
+        )
+        .unique()
+        .scalar_one_or_none()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Faktura nie istnieje.")
+    if invoice.approved_at is not None:
+        return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
+
+    all_parties = list(
+        db.execute(select(Party).where(Party.is_active.is_(True)).order_by(Party.name_full))
+        .scalars()
+        .all()
+    )
+
+    fa_meta = invoice.fa_metadata or {}
+    prefill: dict = {
+        "invoice_number": invoice.invoice_number,
+        "issue_date": str(invoice.issue_date) if invoice.issue_date else "",
+        "issue_place": fa_meta.get("issue_place", ""),
+        "sale_date": str(invoice.sale_date) if invoice.sale_date else "",
+        "due_date": str(invoice.due_date) if invoice.due_date else "",
+        "currency_code": invoice.currency_code,
+        "exchange_rate": str(invoice.exchange_rate) if invoice.exchange_rate else "",
+        "payment_method": invoice.payment_method or "",
+        "payment_account": invoice.payment_account or "",
+        "payment_swift": fa_meta.get("payment_swift", ""),
+        "payment_bank_name": fa_meta.get("payment_bank_name", ""),
+        "contract_date": fa_meta.get("contract_date", ""),
+        "contract_number": fa_meta.get("contract_number", ""),
+        "footer_note": fa_meta.get("footer_note", ""),
+    }
+    for ip in invoice.parties:
+        party = ip.party
+        if not party:
+            continue
+        if ip.role_code == "SELLER":
+            prefill["seller_party_id"] = party.id
+        elif ip.role_code == "BUYER":
+            prefill["buyer_party_id"] = party.id
+
+    lines_data = []
+    for line in sorted(invoice.lines, key=lambda l: l.line_no):
+        lm = line.line_metadata or {}
+        exr = lm.get("exchange_rate")
+        lines_data.append({
+            "description": line.product_name,
+            "unit": line.unit_code or "",
+            "qty": str(line.quantity),
+            "price": str(line.unit_price_net),
+            "vat_code": line.vat_code or ("23" if line.vat_rate else "oo"),
+            "exchange_rate": str(exr) if exr else "",
+        })
+    prefill["lines"] = lines_data
+
+    error_msg = request.query_params.get("error")
+
+    return templates.TemplateResponse(
+        "invoice_form.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "mode": "edit",
+            "invoice_id": invoice_id,
+            "prefill": prefill,
+            "parties": all_parties,
+            "error": error_msg,
+        },
+    )
+
+
+@router.post("/ui/invoices/{invoice_id}/edit")
+async def invoice_edit_submit(
+    invoice_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent", "reviewer")),
+):
+    form = await request.form()
+
+    def _s(key: str, default: str = "") -> str:
+        return (form.get(key) or default).strip()
+
+    invoice_number = _s("invoice_number")
+    issue_date_str = _s("issue_date")
+    issue_place = _s("issue_place")
+    sale_date_str = _s("sale_date")
+    due_date_str = _s("due_date")
+    currency_code = _s("currency_code", "PLN") or "PLN"
+    exchange_rate_str = _s("exchange_rate")
+    payment_method = _s("payment_method") or None
+    payment_account = _s("payment_account") or None
+    payment_swift = _s("payment_swift")
+    payment_bank_name = _s("payment_bank_name")
+
+    seller_party_id_str = _s("seller_party_id")
+    buyer_party_id_str = _s("buyer_party_id")
+
+    contract_date_str = _s("contract_date")
+    contract_number = _s("contract_number")
+    footer_note = _s("footer_note")
+
+    line_count = int(_s("line_count", "0") or "0")
+
+    vat_rate_map: dict = {
+        "23": Decimal("23"), "8": Decimal("8"), "5": Decimal("5"),
+        "0": Decimal("0"), "oo": None, "np": None,
+    }
+
+    try:
+        lines = []
+        for i in range(1, line_count + 1):
+            desc = _s(f"line_description_{i}")
+            if not desc:
+                continue
+            unit = _s(f"line_unit_{i}") or None
+            qty = _s(f"line_qty_{i}", "1") or "1"
+            price = _s(f"line_price_{i}", "0") or "0"
+            vat_code = _s(f"line_vat_{i}", "23")
+            exr = _s(f"line_exchange_rate_{i}") or None
+
+            lm = {"exchange_rate": exr} if exr else None
+            lines.append(
+                InvoiceLinePayload(
+                    line_no=i,
+                    product_name=desc,
+                    unit_code=unit,
+                    quantity=Decimal(qty),
+                    unit_price_net=Decimal(price),
+                    vat_rate=vat_rate_map.get(vat_code, Decimal("23")),
+                    vat_code=vat_code,
+                    line_metadata=lm,
+                )
+            )
+
+        if not seller_party_id_str or not buyer_party_id_str:
+            raise ValueError("Wybierz sprzedawcę i nabywcę.")
+        seller_db = db.get(Party, int(seller_party_id_str))
+        buyer_db = db.get(Party, int(buyer_party_id_str))
+        if not seller_db or not buyer_db:
+            raise ValueError("Wybrany kontrahent nie istnieje w bazie.")
+
+        def _party_payload(p: Party) -> PartyPayload:
+            return PartyPayload(
+                party_uuid=p.party_uuid,
+                name_full=p.name_full,
+                name_short=p.name_short,
+                tax_id=p.tax_id,
+                vat_eu_id=p.vat_eu_id,
+                regon=p.regon,
+                krs=p.krs,
+                country_code=p.country_code,
+                street=p.street,
+                building_no=p.building_no,
+                apartment_no=p.apartment_no,
+                city=p.city,
+                postal_code=p.postal_code,
+                province=p.province,
+                email=p.email,
+                phone=p.phone,
+                bank_account=p.bank_account,
+                extra_data=p.extra_data,
+            )
+
+        seller_party = InvoicePartyPayload(
+            role_code="SELLER", sequence_no=1, party=_party_payload(seller_db)
+        )
+        buyer_party = InvoicePartyPayload(
+            role_code="BUYER", sequence_no=1, party=_party_payload(buyer_db)
+        )
+
+        fa_meta: dict = {}
+        if issue_place:
+            fa_meta["issue_place"] = issue_place
+        if payment_swift:
+            fa_meta["payment_swift"] = payment_swift
+        if payment_bank_name:
+            fa_meta["payment_bank_name"] = payment_bank_name
+        if contract_date_str:
+            fa_meta["contract_date"] = contract_date_str
+        if contract_number:
+            fa_meta["contract_number"] = contract_number
+        if footer_note:
+            fa_meta["footer_note"] = footer_note
+
+        payload = InvoiceUpdateRequest(
+            invoice_number=invoice_number,
+            issue_date=date.fromisoformat(issue_date_str),
+            sale_date=date.fromisoformat(sale_date_str) if sale_date_str else None,
+            due_date=date.fromisoformat(due_date_str) if due_date_str else None,
+            currency_code=currency_code,
+            exchange_rate=Decimal(exchange_rate_str) if exchange_rate_str else None,
+            payment_method=payment_method,
+            payment_account=payment_account,
+            fa_metadata=fa_meta or None,
+            parties=[seller_party, buyer_party],
+            lines=lines,
+        )
+        InvoiceService.update_invoice(db, invoice_id, payload, actor_id=str(current_user.id))
+    except (InvalidOperation, ValidationError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Nieprawidłowe dane formularza faktury: {exc}",
+        ) from exc
+
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
+
+
 @router.get("/ui/invoices/{invoice_id}")
 def invoice_detail(
     invoice_id: int,
@@ -713,16 +937,11 @@ def invoice_approve(
             actor_id=str(current_user.id),
         )
     except ValueError as exc:
-        invoice = InvoiceService.get_invoice(db, invoice_id)
-        return templates.TemplateResponse(
-            "invoice_detail.html",
-            {
-                "request": request,
-                "current_user": current_user,
-                "invoice": invoice,
-                "approve_error": str(exc),
-            },
-            status_code=422,
+        from urllib.parse import quote
+        error_msg = quote(str(exc))
+        return RedirectResponse(
+            url=f"/ui/invoices/{invoice_id}/edit?error={error_msg}",
+            status_code=303,
         )
 
     return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
@@ -747,7 +966,7 @@ def invoice_validate_ksef(
     if biz_result.valid:
         try:
             xml_content = InvoiceService._generate_fa3_xml(invoice)
-            xml_preview = xml_content[:2000]  # first 2 KB for display
+            xml_preview = xml_content
             xsd_errors = ValidationService.validate_ksef_xml(xml_content)
         except Exception as exc:
             xsd_errors = [f"Błąd generowania XML: {exc}"]

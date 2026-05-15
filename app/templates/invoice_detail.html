@@ -7,6 +7,7 @@
         <a class="btn secondary" href="/ui/invoices">Powrót</a>
         <a class="btn" href="/ui/invoices/new?clone={{ invoice.id }}" style="margin-left:6px">Powtórz fakturę</a>
         {% if not invoice.approved_at %}
+        <a class="btn secondary" href="/ui/invoices/{{ invoice.id }}/edit" style="margin-left:6px">Edytuj</a>
         <form method="post" action="/ui/invoices/{{ invoice.id }}/validate-ksef" class="inline-form" style="margin-left:6px">
             <button class="btn secondary" type="submit">Waliduj KSeF</button>
         </form>
@@ -49,7 +50,7 @@
 
     {% if validate_result.xml_preview %}
     <details style="margin-top:1rem">
-        <summary>Podgląd XML (pierwsze 2 KB)</summary>
+        <summary>Podgląd XML</summary>
         <pre style="font-size:.75rem;overflow:auto;max-height:300px">{{ validate_result.xml_preview }}</pre>
     </details>
     {% endif %}

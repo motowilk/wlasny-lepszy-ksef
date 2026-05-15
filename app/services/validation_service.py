@@ -61,11 +61,14 @@ class ValidationService:
 
         if invoice.direction_code == "SALE":
             buyer_exists = any(p.role_code == "BUYER" for p in invoice.parties)
-            seller_exists = any(p.role_code == "SELLER" for p in invoice.parties)
+            seller_link = next((p for p in invoice.parties if p.role_code == "SELLER"), None)
+            seller_exists = seller_link is not None
             if not buyer_exists:
                 errors.append("Faktura sprzedażowa musi mieć nabywcę.")
             if not seller_exists:
-                warnings.append("Faktura sprzedażowa nie ma powiązanego sprzedawcy.")
+                errors.append("Faktura sprzedażowa musi mieć powiązanego sprzedawcę.")
+            elif not (seller_link.party and (seller_link.party.tax_id or "").strip()):
+                errors.append("Sprzedawca musi mieć wypełniony NIP.")
 
         calculated_net = Decimal("0.00")
         calculated_vat = Decimal("0.00")

@@ -608,7 +608,10 @@ class InvoiceService:
         if not seller or not seller.country_code or seller.country_code == "PL":
             _sub(p1, "PrefiksPodatnika", "PL")
         di1 = _sub(p1, "DaneIdentyfikacyjne")
-        _sub(di1, "NIP", (seller.tax_id or "") if seller else "")
+        seller_nip = (seller.tax_id or "").strip() if seller else ""
+        if not seller_nip:
+            raise ValueError("Sprzedawca (Podmiot1) musi mieć wypełniony NIP.")
+        _sub(di1, "NIP", seller_nip)
         _sub(di1, "Nazwa", (seller.name_full or "") if seller else "")
         addr_l1 = _build_addr_l1(seller) if seller else ""
         adres1 = _sub(p1, "Adres")
@@ -625,8 +628,16 @@ class InvoiceService:
         if buyer:
             bp = buyer
             if bp.vat_eu_id:
-                _sub(di2, "KodUE", bp.country_code or "")
-                _sub(di2, "NrVatUE", bp.vat_eu_id)
+                vat_eu_raw = bp.vat_eu_id.strip()
+                # Strip country code prefix (2 letters) from vat_eu_id for NrVatUE
+                if len(vat_eu_raw) > 2 and vat_eu_raw[:2].isalpha():
+                    kod_ue = vat_eu_raw[:2].upper()
+                    nr_vat_ue = vat_eu_raw[2:]
+                else:
+                    kod_ue = bp.country_code or ""
+                    nr_vat_ue = vat_eu_raw
+                _sub(di2, "KodUE", kod_ue)
+                _sub(di2, "NrVatUE", nr_vat_ue)
                 _sub(di2, "Nazwa", bp.name_full or "")
             elif bp.tax_id and (not bp.country_code or bp.country_code == "PL"):
                 _sub(di2, "NIP", bp.tax_id)

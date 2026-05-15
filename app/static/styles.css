@@ -179,6 +179,22 @@ h2 {
     background: #cbd5e0;
 }
 
+.btn-detail {
+    display: inline-block;
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: #2563eb;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: background 0.2s;
+}
+
+.btn-detail:hover {
+    background: #1d4ed8;
+}
+
 /* Forms */
 .form-grid {
     display: grid;

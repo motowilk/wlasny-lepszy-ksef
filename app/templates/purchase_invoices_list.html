@@ -3,26 +3,67 @@
 {% block content %}
 <h1>Faktury zakupowe</h1>
 
-<table class="table">
-    <thead>
-        <tr>
-            <th>ID</th>
-            <th>Numer</th>
-            <th>Status księgowy</th>
-            <th>Kwalifikacja</th>
-            <th>Brutto</th>
-        </tr>
-    </thead>
-    <tbody>
-    {% for item in items %}
-        <tr>
-            <td>{{ item.id }}</td>
-            <td>{{ item.invoice_number }}</td>
-            <td>{{ item.accounting_status or "-" }}</td>
-            <td>{{ item.accounting_qualified }}</td>
-            <td>{{ item.gross_total }}</td>
-        </tr>
-    {% endfor %}
-    </tbody>
-</table>
+<section class="card">
+    <input type="text" id="purchase-filter" placeholder="Szukaj w tabeli..." style="width:100%;padding:8px 12px;margin-bottom:12px;border:1px solid #ccc;border-radius:6px;font-size:13px">
+    <div style="overflow-x:auto">
+    <table class="table" id="purchase-table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Numer</th>
+                <th>Sprzedawca</th>
+                <th>Nabywca</th>
+                <th>Status KSeF</th>
+                <th>Status ERP</th>
+                <th>Kwalifikacja</th>
+                <th>Brutto</th>
+                <th>Akcje</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for item in items %}
+            {% set seller_name = '' %}
+            {% set buyer_name = '' %}
+            {% for p in item.parties %}
+                {% if p.role_code == 'SELLER' and p.party %}{% set seller_name = p.party.name_full or '' %}{% endif %}
+                {% if p.role_code == 'BUYER' and p.party %}{% set buyer_name = p.party.name_full or '' %}{% endif %}
+            {% endfor %}
+            <tr>
+                <td>{{ item.id }}</td>
+                <td>{{ item.invoice_number }}</td>
+                <td>{{ seller_name }}</td>
+                <td>{{ buyer_name }}</td>
+                <td>
+                    {% if item.ksef_status_code in ('ACCEPTED', 'SENT') %}
+                    <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#d4edda;color:#155724">{{ item.ksef_status_code }}</span>
+                    {% else %}
+                    <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#fff3cd;color:#856404">{{ item.ksef_status_code }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if item.erp_status and item.erp_status in ('EXPORTED', 'SYNCED', 'ACCEPTED', 'KSEF_ACCEPTED') %}
+                    <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#d4edda;color:#155724">{{ item.erp_status }}</span>
+                    {% else %}
+                    <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:#fff3cd;color:#856404">{{ item.erp_status or 'BRAK' }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ item.accounting_qualified if item.accounting_qualified is not none else '-' }}</td>
+                <td>{{ item.gross_total }}</td>
+                <td><a class="btn-detail" href="/ui/invoices/{{ item.id }}">Szczegóły</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<script>
+document.getElementById('purchase-filter').addEventListener('input', function() {
+    var filter = this.value.toLowerCase();
+    var rows = document.querySelectorAll('#purchase-table tbody tr');
+    rows.forEach(function(row) {
+        row.style.display = row.textContent.toLowerCase().includes(filter) ? '' : 'none';
+    });
+});
+</script>
 {% endblock %}

@@ -4,11 +4,17 @@
 {% set sel_currency = prefill.get('currency_code', 'PLN') %}
 
 <div class="page-header">
-    <h1>Nowy draft faktury sprzedażowej</h1>
-    <a class="btn secondary" href="/ui/invoices">Anuluj</a>
+    <h1>{% if mode == 'edit' %}Edycja faktury{% else %}Nowy draft faktury sprzedażowej{% endif %}</h1>
+    <a class="btn secondary" href="{% if mode == 'edit' %}/ui/invoices/{{ invoice_id }}{% else %}/ui/invoices{% endif %}">Anuluj</a>
 </div>
 
-<form method="post" action="/ui/invoices/new" id="invoice-form">
+{% if error %}
+<div class="alert alert-danger" style="background:#fff0f0;border:1px solid #e88;color:#a00;padding:12px 16px;border-radius:6px;margin-bottom:16px">
+    <strong>Błąd walidacji:</strong> {{ error }}
+</div>
+{% endif %}
+
+<form method="post" action="{% if mode == 'edit' %}/ui/invoices/{{ invoice_id }}/edit{% else %}/ui/invoices/new{% endif %}" id="invoice-form">
 
     <!-- ═══ NAGŁÓWEK FAKTURY ═══ -->
     <section class="card">
@@ -67,7 +73,7 @@
             </label>
             <label class="span-2">
                 Nr rachunku bankowego (IBAN)
-                <input type="text" name="payment_account" value="{{ prefill.get('payment_account', '') }}" placeholder="PL03 1020 4870 0000 5002 0098 5796">
+                <input type="text" name="payment_account" value="{{ prefill.get('payment_account', '') }}" placeholder="PL1234567890123456789">
             </label>
             <label>
                 Kod SWIFT / BIC
@@ -165,8 +171,8 @@
     </section>
 
     <div class="form-actions" style="margin-bottom:40px">
-        <button type="submit" class="btn">Zapisz draft</button>
-        <a class="btn secondary" href="/ui/invoices">Anuluj</a>
+        <button type="submit" class="btn">{% if mode == 'edit' %}Zapisz zmiany{% else %}Zapisz draft{% endif %}</button>
+        <a class="btn secondary" href="{% if mode == 'edit' %}/ui/invoices/{{ invoice_id }}{% else %}/ui/invoices{% endif %}">Anuluj</a>
     </div>
 
 </form>
