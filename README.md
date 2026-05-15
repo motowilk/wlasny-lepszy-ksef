@@ -5,6 +5,272 @@
 
 Poniżej znajduje się uproszczona instrukcja pierwszego uruchomienia projektu. Zawiera tylko kroki operacyjne potrzebne do startu aplikacji lokalnie, bez opisu architektury i bez zawartości plików źródłowych w dokumentacji.
 
+## Aktualna funkcjonalność aplikacji
+
+Po skonfigurowaniu środowiska aplikacja udostępnia kompletny lokalny system do obsługi obiegu faktur w modelu KSeF ERP. Poniżej znajduje się opis aktualnych możliwości wynikających z bieżącego kodu aplikacji.
+
+### 1. Model dostępu i uwierzytelnianie
+
+**Interfejs WWW (`/ui`)** — logowanie przez formularz HTML z sesją cookie:
+- Użytkownik wchodzi na `/ui` → zostaje przekierowany do `/ui/login`.
+- Po wpisaniu loginu i hasła serwer ustawia podpisany `HttpOnly` cookie (`session`) i przekierowuje do dashboardu.
+- Jeśli konto ma ustawiony `totp_secret`, po haśle pojawia się drugi krok weryfikacji kodem TOTP (aplikacja uwierzytelniająca, np. Google Authenticator, Aegis).
+- Wylogowanie przez `/ui/logout` — cookie jest kasowany.
+
+**REST API (`/api/*`)** — HTTP Basic Auth (dla Swagger i klientów API).
+
+- Hasła są przechowywane jako hashe `bcrypt_sha256`; stare hashe `bcrypt` są rozpoznawane i weryfikowane (wsteczna kompatybilność).
+- Po poprawnym logowaniu aktualizowana jest data ostatniego logowania użytkownika.
+- Dostęp do operacji jest ograniczany rolami systemowymi.
+- Obsługiwane role: `admin`, `agent`, `reviewer`, `accountant`, `viewer`.
+- Konto `admin` jest tworzone skryptem inicjalizacyjnym na podstawie `ADMIN_DEFAULT_PASSWORD` z `.env`.
+
+**Konfiguracja 2FA (TOTP):**
+
+Aby włączyć weryfikację dwuetapową dla konta, ustaw pole `totp_secret` w tabeli `app_user` na base32-zakodowany sekret (np. generowany przez `pyotp.random_base32()`). Konto bez ustawionego `totp_secret` loguje się jednoetapowo.
+
+### 2. Interfejs WWW
+
+Interfejs WWW jest dostępny pod adresem `/ui` i służy do codziennej obsługi danych bez potrzeby ręcznego wywoływania endpointów API.
+
+UI obejmuje obecnie:
+
+- dashboard z licznikami faktur, powiadomień i batchy księgowych
+- listę faktur sprzedażowych
+- listę faktur zakupowych
+- formularz tworzenia nowej faktury sprzedażowej
+- widok szczegółów faktury z liniami, stronami dokumentu, eventami i payloadami integracyjnymi
+- listę batchy księgowych
+- szczegóły pojedynczego batcha księgowego
+- listę powiadomień
+
+Z poziomu UI można obecnie:
+
+- utworzyć nowy draft faktury sprzedażowej
+- obejrzeć szczegóły faktury wraz z historią zdarzeń
+- zaakceptować fakturę i przekazać ją do kolejki integracyjnej KSeF
+
+### 3. Zarządzanie fakturami sprzedażowymi i ogólnym rejestrem faktur
+
+Warstwa API udostępnia pełną obsługę draftów i rejestru faktur.
+
+Aktualnie możliwe jest:
+
+- tworzenie draftu faktury przez API
+- pobieranie listy faktur z filtrowaniem po `direction_code`, `ksef_status_code`, `accounting_status`, `erp_status`, `review_status`
+- stronicowanie list przez `limit` i `offset`
+- pobieranie szczegółów pojedynczej faktury
+- aktualizowanie draftu przed akceptacją
+- ponowne przeliczenie faktury na podstawie aktualnych danych
+- uruchomienie walidacji biznesowej faktury
+- akceptacja faktury i zapisanie jej do kolejki wysyłki KSeF
+- pobieranie historii eventów faktury
+- pobieranie metadanych zapisanych payloadów integracyjnych
+
+W trakcie pracy z fakturą aplikacja utrzymuje i aktualizuje między innymi:
+
+- dane nagłówka dokumentu
+- strony dokumentu, takie jak sprzedawca i nabywca
+- pozycje faktury
+- sumy netto, VAT i brutto
+- podsumowania VAT
+- statusy obiegu biznesowego i integracyjnego
+- historię eventów technicznych i biznesowych
+- payload XML do KSeF i payloady odpowiedzi integracyjnych
+
+### 4. Walidacja i generowanie danych KSeF
+
+Przed akceptacją faktura przechodzi walidację biznesową. Jeżeli walidacja zakończy się sukcesem, aplikacja:
+
+- generuje XML faktury
+- liczy hash SHA-256 dokumentu XML
+- zapisuje XML jako payload typu `KSEF_XML`
+- oznacza dokument jako zaakceptowany biznesowo
+- tworzy zadanie integracyjne `SEND_TO_KSEF`
+
+To oznacza, że akceptacja faktury nie tylko zmienia status w systemie, ale uruchamia też dalszy asynchroniczny workflow integracyjny.
+
+### 5. Integracja z KSeF
+
+Aplikacja obsługuje dwa tryby pracy integracji:
+
+- `mock`, przeznaczony do developmentu lokalnego
+- `live`, korzystający z rzeczywistego klienta KSeF
+
+Obecny workflow integracyjny obejmuje:
+
+- pobranie najnowszego payloadu XML faktury
+- wysłanie dokumentu do KSeF
+- zapis numeru referencyjnego i identyfikatorów sesji
+- w trybie `mock` automatyczne zaakceptowanie faktury i nadanie numeru KSeF
+- w trybie `live` utworzenie kolejnego zadania `POLL_KSEF_STATUS`
+- cykliczne odpytywanie o wynik przetwarzania dokumentu
+- oznaczenie dokumentu jako `ACCEPTED` albo `REJECTED`
+- zapis eventów integracyjnych i payloadów odpowiedzi
+
+W praktyce aplikacja utrzymuje pełny ślad techniczny procesu od zatwierdzenia dokumentu do uzyskania statusu końcowego w KSeF.
+
+### 6. Obsługa faktur zakupowych
+
+Faktury zakupowe są obsługiwane osobnym obszarem API i UI.
+
+Aktualnie dostępne funkcje to:
+
+- listowanie faktur zakupowych
+- pobieranie szczegółów wyłącznie dla dokumentów typu `PURCHASE`
+- kwalifikowanie faktury zakupowej do procesu księgowego
+- odrzucanie faktury z procesu kosztowego
+
+Kwalifikacja faktury zakupowej wpływa na pola i statusy robocze, między innymi:
+
+- `accounting_qualified`
+- `accounting_notes`
+- `review_status`
+- `erp_status`
+
+Pozytywna kwalifikacja ustawia dokument jako gotowy do dalszego procesu księgowego, a negatywna blokuje go w obiegu.
+
+### 7. Proces księgowy i batchowanie
+
+Aplikacja posiada wydzielony moduł księgowy dla dalszej obsługi faktur, głównie zakupowych.
+
+Dostępne możliwości:
+
+- zmiana statusu księgowego faktury
+- zapis notatek księgowych
+- oznaczanie kwalifikacji księgowej dokumentu
+- generowanie miesięcznych batchy księgowych dla zakwalifikowanych faktur zakupowych
+- listowanie batchy księgowych
+- pobieranie szczegółów batcha księgowego
+
+Obsługiwane statusy księgowe obejmują obecnie:
+
+- `new`
+- `verified`
+- `posted`
+- `booked`
+- `cancelled`
+
+Po ustawieniu statusu `booked` aplikacja:
+
+- oznacza dokument jako zakończony po stronie ERP
+- zapisuje odpowiedni event
+- tworzy zadanie `SEND_BOOKED_NOTIFICATION`
+
+Generowanie batcha miesięcznego powoduje:
+
+- wybór zakwalifikowanych faktur zakupowych bez przypisanego batcha
+- przypisanie ich do nowego batcha
+- zmianę statusu ERP dokumentów na `ACCOUNTING_BATCHED`
+- utworzenie zadania `SEND_ACCOUNTING_BATCH`
+
+### 8. Powiadomienia
+
+System posiada moduł powiadomień oparty o log zdarzeń i wysyłkę e-mail.
+
+Aktualnie wspierane funkcje:
+
+- utworzenie powiadomienia dla faktury
+- ręczne wysłanie wskazanego powiadomienia
+- listowanie historii powiadomień
+- automatyczne tworzenie powiadomień po zaksięgowaniu faktury
+
+Powiadomienia zawierają co najmniej:
+
+- numer faktury
+- numer KSeF
+- link do szczegółów faktury w UI
+- referencję do payloadu XML
+
+Status powiadomień i dokumentów jest aktualizowany po wysyłce lub błędzie wysyłki. System zapisuje też eventy `NOTIFICATION_CREATED`, `NOTIFICATION_SENT` oraz `NOTIFICATION_FAILED`.
+
+### 9. Zarządzanie użytkownikami i rolami
+
+Moduł użytkowników pozwala na administracyjne zarządzanie kontami aplikacyjnymi.
+
+Obejmuje to:
+
+- listowanie użytkowników wraz z przypisanymi rolami
+- tworzenie nowych użytkowników lokalnych
+- listowanie ról dostępnych w systemie
+- nadawanie zestawu ról wybranemu użytkownikowi
+
+Podczas tworzenia i aktualizacji ról system:
+
+- normalizuje login użytkownika
+- odrzuca próby utworzenia duplikatu loginu
+- hashuje hasło lokalnego użytkownika
+- odrzuca nieznane kody ról zamiast ich cichego ignorowania
+
+### 10. Endpointy pomocnicze dla trybu agentowego
+
+System udostępnia osobny zestaw endpointów pomocniczych dla użytkowników z rolą `admin` lub `agent`.
+
+Obecnie obejmują one:
+
+- endpoint zdrowia trybu agentowego
+- podgląd kolejki zadań w statusach `NEW` i `PROCESSING`
+- listę draftów o statusie ERP `DRAFT_CREATED`
+
+Te endpointy są przydatne przy budowie agentów operacyjnych, paneli pomocniczych albo automatyzacji back-office.
+
+### 11. Zdarzenia, payloady i ślad audytowy procesu
+
+Aplikacja utrzymuje rozbudowany ślad zmian operacyjnych i integracyjnych. Dla dokumentów zapisywane są między innymi:
+
+- eventy biznesowe, na przykład utworzenie, aktualizacja, akceptacja, kwalifikacja księgowa, dodanie do batcha
+- eventy integracyjne, na przykład wysyłka do KSeF, akceptacja, odrzucenie, tworzenie i wysyłka powiadomień
+- payloady XML i JSON związane z integracją
+- znaczniki czasu dla etapów workflow
+- informacje o aktorze, który wykonał operację
+
+To pozwala analizować historię dokumentu zarówno z perspektywy biznesowej, jak i technicznej.
+
+### 12. Przetwarzanie asynchroniczne i harmonogram
+
+Aplikacja posiada dwa sposoby uruchamiania obsługi zadań w tle:
+
+- worker działający w pętli i stale pobierający kolejne zadania z bazy
+- scheduler APScheduler wywołujący przetwarzanie zadania w stałym interwale
+
+Obsługiwane typy zadań obejmują obecnie:
+
+- `SEND_TO_KSEF`
+- `POLL_KSEF_STATUS`
+- `SEND_BOOKED_NOTIFICATION`
+- `SEND_ACCOUNTING_BATCH`
+
+Worker:
+
+- pobiera tylko zadania o statusie `NEW`
+- oznacza je jako `PROCESSING`
+- zapisuje metadane blokady roboczej
+- kończy zadanie statusem `DONE` albo `FAILED`
+
+### 13. Endpointy systemowe i developerskie
+
+Poza główną logiką biznesową aplikacja udostępnia także:
+
+- `/health` do prostego sprawdzenia dostępności aplikacji
+- `/docs` z dokumentacją Swagger generowaną przez FastAPI
+- `/api/me` do pobrania danych bieżącego użytkownika i jego ról
+- `/static` do serwowania zasobów statycznych interfejsu WWW
+
+### 14. Najważniejszy przebieg end-to-end
+
+Najważniejszy obecnie scenariusz działania aplikacji wygląda tak:
+
+1. Użytkownik tworzy draft faktury.
+2. System wylicza sumy, zapisuje strony i pozycje oraz dodaje event utworzenia.
+3. Użytkownik waliduje i akceptuje fakturę.
+4. System generuje XML, zapisuje payload, ustawia statusy i dodaje zadanie `SEND_TO_KSEF`.
+5. Worker lub scheduler przetwarza zadanie integracyjne.
+6. W trybie `mock` faktura otrzymuje numer KSeF od razu, a w trybie `live` system przechodzi przez polling statusu.
+7. Po dalszej obsłudze księgowej dokument może otrzymać status `booked`, co tworzy zadanie wysyłki powiadomienia.
+8. Dla faktur zakupowych możliwe jest dodatkowo kwalifikowanie do batcha księgowego i wysyłka informacji o batchu.
+
+
+## Instalacja i konfiguracja
 ## Założenia
 
 - Python 3.12 lub nowszy jest zainstalowany lokalnie.
@@ -519,269 +785,6 @@ Losowy klucz do `SECRET_KEY` możesz wygenerować tak:
 python3 -c "import secrets; print(secrets.token_hex(32))"
 ```
 
-## Aktualna funkcjonalność aplikacji
-
-Po skonfigurowaniu środowiska aplikacja udostępnia kompletny lokalny system do obsługi obiegu faktur w modelu KSeF ERP. Poniżej znajduje się opis aktualnych możliwości wynikających z bieżącego kodu aplikacji.
-
-### 1. Model dostępu i uwierzytelnianie
-
-**Interfejs WWW (`/ui`)** — logowanie przez formularz HTML z sesją cookie:
-- Użytkownik wchodzi na `/ui` → zostaje przekierowany do `/ui/login`.
-- Po wpisaniu loginu i hasła serwer ustawia podpisany `HttpOnly` cookie (`session`) i przekierowuje do dashboardu.
-- Jeśli konto ma ustawiony `totp_secret`, po haśle pojawia się drugi krok weryfikacji kodem TOTP (aplikacja uwierzytelniająca, np. Google Authenticator, Aegis).
-- Wylogowanie przez `/ui/logout` — cookie jest kasowany.
-
-**REST API (`/api/*`)** — HTTP Basic Auth (dla Swagger i klientów API).
-
-- Hasła są przechowywane jako hashe `bcrypt_sha256`; stare hashe `bcrypt` są rozpoznawane i weryfikowane (wsteczna kompatybilność).
-- Po poprawnym logowaniu aktualizowana jest data ostatniego logowania użytkownika.
-- Dostęp do operacji jest ograniczany rolami systemowymi.
-- Obsługiwane role: `admin`, `agent`, `reviewer`, `accountant`, `viewer`.
-- Konto `admin` jest tworzone skryptem inicjalizacyjnym na podstawie `ADMIN_DEFAULT_PASSWORD` z `.env`.
-
-**Konfiguracja 2FA (TOTP):**
-
-Aby włączyć weryfikację dwuetapową dla konta, ustaw pole `totp_secret` w tabeli `app_user` na base32-zakodowany sekret (np. generowany przez `pyotp.random_base32()`). Konto bez ustawionego `totp_secret` loguje się jednoetapowo.
-
-### 2. Interfejs WWW
-
-Interfejs WWW jest dostępny pod adresem `/ui` i służy do codziennej obsługi danych bez potrzeby ręcznego wywoływania endpointów API.
-
-UI obejmuje obecnie:
-
-- dashboard z licznikami faktur, powiadomień i batchy księgowych
-- listę faktur sprzedażowych
-- listę faktur zakupowych
-- formularz tworzenia nowej faktury sprzedażowej
-- widok szczegółów faktury z liniami, stronami dokumentu, eventami i payloadami integracyjnymi
-- listę batchy księgowych
-- szczegóły pojedynczego batcha księgowego
-- listę powiadomień
-
-Z poziomu UI można obecnie:
-
-- utworzyć nowy draft faktury sprzedażowej
-- obejrzeć szczegóły faktury wraz z historią zdarzeń
-- zaakceptować fakturę i przekazać ją do kolejki integracyjnej KSeF
-
-### 3. Zarządzanie fakturami sprzedażowymi i ogólnym rejestrem faktur
-
-Warstwa API udostępnia pełną obsługę draftów i rejestru faktur.
-
-Aktualnie możliwe jest:
-
-- tworzenie draftu faktury przez API
-- pobieranie listy faktur z filtrowaniem po `direction_code`, `ksef_status_code`, `accounting_status`, `erp_status`, `review_status`
-- stronicowanie list przez `limit` i `offset`
-- pobieranie szczegółów pojedynczej faktury
-- aktualizowanie draftu przed akceptacją
-- ponowne przeliczenie faktury na podstawie aktualnych danych
-- uruchomienie walidacji biznesowej faktury
-- akceptacja faktury i zapisanie jej do kolejki wysyłki KSeF
-- pobieranie historii eventów faktury
-- pobieranie metadanych zapisanych payloadów integracyjnych
-
-W trakcie pracy z fakturą aplikacja utrzymuje i aktualizuje między innymi:
-
-- dane nagłówka dokumentu
-- strony dokumentu, takie jak sprzedawca i nabywca
-- pozycje faktury
-- sumy netto, VAT i brutto
-- podsumowania VAT
-- statusy obiegu biznesowego i integracyjnego
-- historię eventów technicznych i biznesowych
-- payload XML do KSeF i payloady odpowiedzi integracyjnych
-
-### 4. Walidacja i generowanie danych KSeF
-
-Przed akceptacją faktura przechodzi walidację biznesową. Jeżeli walidacja zakończy się sukcesem, aplikacja:
-
-- generuje XML faktury
-- liczy hash SHA-256 dokumentu XML
-- zapisuje XML jako payload typu `KSEF_XML`
-- oznacza dokument jako zaakceptowany biznesowo
-- tworzy zadanie integracyjne `SEND_TO_KSEF`
-
-To oznacza, że akceptacja faktury nie tylko zmienia status w systemie, ale uruchamia też dalszy asynchroniczny workflow integracyjny.
-
-### 5. Integracja z KSeF
-
-Aplikacja obsługuje dwa tryby pracy integracji:
-
-- `mock`, przeznaczony do developmentu lokalnego
-- `live`, korzystający z rzeczywistego klienta KSeF
-
-Obecny workflow integracyjny obejmuje:
-
-- pobranie najnowszego payloadu XML faktury
-- wysłanie dokumentu do KSeF
-- zapis numeru referencyjnego i identyfikatorów sesji
-- w trybie `mock` automatyczne zaakceptowanie faktury i nadanie numeru KSeF
-- w trybie `live` utworzenie kolejnego zadania `POLL_KSEF_STATUS`
-- cykliczne odpytywanie o wynik przetwarzania dokumentu
-- oznaczenie dokumentu jako `ACCEPTED` albo `REJECTED`
-- zapis eventów integracyjnych i payloadów odpowiedzi
-
-W praktyce aplikacja utrzymuje pełny ślad techniczny procesu od zatwierdzenia dokumentu do uzyskania statusu końcowego w KSeF.
-
-### 6. Obsługa faktur zakupowych
-
-Faktury zakupowe są obsługiwane osobnym obszarem API i UI.
-
-Aktualnie dostępne funkcje to:
-
-- listowanie faktur zakupowych
-- pobieranie szczegółów wyłącznie dla dokumentów typu `PURCHASE`
-- kwalifikowanie faktury zakupowej do procesu księgowego
-- odrzucanie faktury z procesu kosztowego
-
-Kwalifikacja faktury zakupowej wpływa na pola i statusy robocze, między innymi:
-
-- `accounting_qualified`
-- `accounting_notes`
-- `review_status`
-- `erp_status`
-
-Pozytywna kwalifikacja ustawia dokument jako gotowy do dalszego procesu księgowego, a negatywna blokuje go w obiegu.
-
-### 7. Proces księgowy i batchowanie
-
-Aplikacja posiada wydzielony moduł księgowy dla dalszej obsługi faktur, głównie zakupowych.
-
-Dostępne możliwości:
-
-- zmiana statusu księgowego faktury
-- zapis notatek księgowych
-- oznaczanie kwalifikacji księgowej dokumentu
-- generowanie miesięcznych batchy księgowych dla zakwalifikowanych faktur zakupowych
-- listowanie batchy księgowych
-- pobieranie szczegółów batcha księgowego
-
-Obsługiwane statusy księgowe obejmują obecnie:
-
-- `new`
-- `verified`
-- `posted`
-- `booked`
-- `cancelled`
-
-Po ustawieniu statusu `booked` aplikacja:
-
-- oznacza dokument jako zakończony po stronie ERP
-- zapisuje odpowiedni event
-- tworzy zadanie `SEND_BOOKED_NOTIFICATION`
-
-Generowanie batcha miesięcznego powoduje:
-
-- wybór zakwalifikowanych faktur zakupowych bez przypisanego batcha
-- przypisanie ich do nowego batcha
-- zmianę statusu ERP dokumentów na `ACCOUNTING_BATCHED`
-- utworzenie zadania `SEND_ACCOUNTING_BATCH`
-
-### 8. Powiadomienia
-
-System posiada moduł powiadomień oparty o log zdarzeń i wysyłkę e-mail.
-
-Aktualnie wspierane funkcje:
-
-- utworzenie powiadomienia dla faktury
-- ręczne wysłanie wskazanego powiadomienia
-- listowanie historii powiadomień
-- automatyczne tworzenie powiadomień po zaksięgowaniu faktury
-
-Powiadomienia zawierają co najmniej:
-
-- numer faktury
-- numer KSeF
-- link do szczegółów faktury w UI
-- referencję do payloadu XML
-
-Status powiadomień i dokumentów jest aktualizowany po wysyłce lub błędzie wysyłki. System zapisuje też eventy `NOTIFICATION_CREATED`, `NOTIFICATION_SENT` oraz `NOTIFICATION_FAILED`.
-
-### 9. Zarządzanie użytkownikami i rolami
-
-Moduł użytkowników pozwala na administracyjne zarządzanie kontami aplikacyjnymi.
-
-Obejmuje to:
-
-- listowanie użytkowników wraz z przypisanymi rolami
-- tworzenie nowych użytkowników lokalnych
-- listowanie ról dostępnych w systemie
-- nadawanie zestawu ról wybranemu użytkownikowi
-
-Podczas tworzenia i aktualizacji ról system:
-
-- normalizuje login użytkownika
-- odrzuca próby utworzenia duplikatu loginu
-- hashuje hasło lokalnego użytkownika
-- odrzuca nieznane kody ról zamiast ich cichego ignorowania
-
-### 10. Endpointy pomocnicze dla trybu agentowego
-
-System udostępnia osobny zestaw endpointów pomocniczych dla użytkowników z rolą `admin` lub `agent`.
-
-Obecnie obejmują one:
-
-- endpoint zdrowia trybu agentowego
-- podgląd kolejki zadań w statusach `NEW` i `PROCESSING`
-- listę draftów o statusie ERP `DRAFT_CREATED`
-
-Te endpointy są przydatne przy budowie agentów operacyjnych, paneli pomocniczych albo automatyzacji back-office.
-
-### 11. Zdarzenia, payloady i ślad audytowy procesu
-
-Aplikacja utrzymuje rozbudowany ślad zmian operacyjnych i integracyjnych. Dla dokumentów zapisywane są między innymi:
-
-- eventy biznesowe, na przykład utworzenie, aktualizacja, akceptacja, kwalifikacja księgowa, dodanie do batcha
-- eventy integracyjne, na przykład wysyłka do KSeF, akceptacja, odrzucenie, tworzenie i wysyłka powiadomień
-- payloady XML i JSON związane z integracją
-- znaczniki czasu dla etapów workflow
-- informacje o aktorze, który wykonał operację
-
-To pozwala analizować historię dokumentu zarówno z perspektywy biznesowej, jak i technicznej.
-
-### 12. Przetwarzanie asynchroniczne i harmonogram
-
-Aplikacja posiada dwa sposoby uruchamiania obsługi zadań w tle:
-
-- worker działający w pętli i stale pobierający kolejne zadania z bazy
-- scheduler APScheduler wywołujący przetwarzanie zadania w stałym interwale
-
-Obsługiwane typy zadań obejmują obecnie:
-
-- `SEND_TO_KSEF`
-- `POLL_KSEF_STATUS`
-- `SEND_BOOKED_NOTIFICATION`
-- `SEND_ACCOUNTING_BATCH`
-
-Worker:
-
-- pobiera tylko zadania o statusie `NEW`
-- oznacza je jako `PROCESSING`
-- zapisuje metadane blokady roboczej
-- kończy zadanie statusem `DONE` albo `FAILED`
-
-### 13. Endpointy systemowe i developerskie
-
-Poza główną logiką biznesową aplikacja udostępnia także:
-
-- `/health` do prostego sprawdzenia dostępności aplikacji
-- `/docs` z dokumentacją Swagger generowaną przez FastAPI
-- `/api/me` do pobrania danych bieżącego użytkownika i jego ról
-- `/static` do serwowania zasobów statycznych interfejsu WWW
-
-### 14. Najważniejszy przebieg end-to-end
-
-Najważniejszy obecnie scenariusz działania aplikacji wygląda tak:
-
-1. Użytkownik tworzy draft faktury.
-2. System wylicza sumy, zapisuje strony i pozycje oraz dodaje event utworzenia.
-3. Użytkownik waliduje i akceptuje fakturę.
-4. System generuje XML, zapisuje payload, ustawia statusy i dodaje zadanie `SEND_TO_KSEF`.
-5. Worker lub scheduler przetwarza zadanie integracyjne.
-6. W trybie `mock` faktura otrzymuje numer KSeF od razu, a w trybie `live` system przechodzi przez polling statusu.
-7. Po dalszej obsłudze księgowej dokument może otrzymać status `booked`, co tworzy zadanie wysyłki powiadomienia.
-8. Dla faktur zakupowych możliwe jest dodatkowo kwalifikowanie do batcha księgowego i wysyłka informacji o batchu.
 
 ## Krok 7. Utwórz lub zaktualizuj schemat bazy
 
