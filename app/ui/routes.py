@@ -139,6 +139,7 @@ def ui_worker_status(
 
     workers = []
     any_warning = False
+    all_stale = True
     for hb in heartbeats:
         hb_time = hb.last_heartbeat_at
         if hb_time.tzinfo is None:
@@ -146,7 +147,9 @@ def ui_worker_status(
         seconds_ago = max(0, int((now - hb_time).total_seconds()))
         is_stale = seconds_ago >= STALE_SECONDS
         is_idle_too_long = not is_stale and hb.status == "IDLE" and seconds_ago >= IDLE_WARN_SECONDS
-        if is_stale or is_idle_too_long:
+        if not is_stale:
+            all_stale = False
+        if is_idle_too_long:
             any_warning = True
         workers.append(
             {
@@ -160,11 +163,16 @@ def ui_worker_status(
             }
         )
 
+    # Only warn if ALL workers are stale (no healthy worker exists)
+    if heartbeats and all_stale:
+        any_warning = True
+
     return JSONResponse(
         {
             "workers": workers,
             "queue": {"new": new_count, "processing": processing_count},
-            "any_worker_stale": any_warning,
+            "any_worker_stale": all_stale if heartbeats else False,
+            "any_worker_warning": any_warning,
         }
     )
 

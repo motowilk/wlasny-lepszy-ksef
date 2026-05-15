@@ -62,10 +62,11 @@
         var q         = data.queue   || {};
         var anyActive = workers.some(function (w) { return w.status === 'ACTIVE'; });
         var anyWarn   = workers.some(function (w) { return w.is_idle_too_long; });
-        var anyStale  = workers.some(function (w) { return w.is_stale; });
+        var allStale  = data.any_worker_stale;
+        var anyHealthy = workers.some(function (w) { return !w.is_stale; });
 
-        var type  = anyStale ? 'stale' : anyWarn ? 'warn' : anyActive ? 'active' : 'idle';
-        var title = anyStale  ? '\u26d4\ufe0f Worker \u2014 brak sygna\u0142u'
+        var type  = (allStale && !anyHealthy) ? 'stale' : anyWarn ? 'warn' : anyActive ? 'active' : 'idle';
+        var title = (allStale && !anyHealthy)  ? '\u26d4\ufe0f Worker \u2014 brak sygna\u0142u'
                   : anyWarn   ? '\u26a0\ufe0f Worker \u2014 idle > 3\u202fmin'
                   : anyActive ? '\u25b6\ufe0f Workers \u2014 aktywny'
                   :             '\u25cb Workers \u2014 bezczynny';
