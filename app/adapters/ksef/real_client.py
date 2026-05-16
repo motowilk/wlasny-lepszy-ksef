@@ -111,8 +111,8 @@ class RealKsefClient(BaseKsefClient):
         """
         Fetch invoices from KSeF using the query endpoint.
 
-        Uses POST /api/online/Query/Invoice/Sync to retrieve invoice metadata,
-        then fetches each invoice's XML via GET /api/online/Invoice/Get/{ksefNumber}.
+        Uses POST /invoices/query/metadata to retrieve invoice metadata,
+        then fetches each invoice's XML via GET /invoices/ksef/{ksefNumber}.
 
         Args:
             date_from: ISO datetime string for range start.
@@ -124,13 +124,21 @@ class RealKsefClient(BaseKsefClient):
         """
         self._ensure_authenticated()
 
-        # Query for invoice references in the date range
+        # Map legacy subject_type values to v2 API enum
+        subject_type_map = {
+            "subject1": "Subject1",
+            "subject2": "Subject2",
+            "subject3": "Subject3",
+        }
+        api_subject_type = subject_type_map.get(subject_type, subject_type)
+
+        # Query body for v2 API
         query_body = {
-            "queryCriteria": {
-                "subjectType": subject_type,
-                "type": "incremental",
-                "acquisitionTimestampThresholdFrom": date_from,
-                "acquisitionTimestampThresholdTo": date_to,
+            "subjectType": api_subject_type,
+            "dateRange": {
+                "dateType": "Invoicing",
+                "from": date_from,
+                "to": date_to,
             },
         }
 
@@ -139,35 +147,33 @@ class RealKsefClient(BaseKsefClient):
         page_size = 100
 
         while True:
-            query_body["queryCriteria"]["offset"] = page_offset
-            query_body["queryCriteria"]["limit"] = page_size
-
             resp = self._post(
-                f"{self.base_url}/online/Query/Invoice/Sync",
+                f"{self.base_url}/invoices/query/metadata?pageOffset={page_offset}&pageSize={page_size}",
                 query_body,
             )
 
-            invoices_list = resp.get("invoiceHeaderList", [])
+            invoices_list = resp.get("invoices", [])
             if not invoices_list:
                 break
 
             for inv_header in invoices_list:
-                ksef_number = inv_header.get("ksefReferenceNumber")
+                ksef_number = inv_header.get("ksefNumber")
                 if not ksef_number:
                     continue
 
                 # Fetch the actual XML content
                 xml_resp = self._get_raw(
-                    f"{self.base_url}/online/Invoice/Get/{ksef_number}"
+                    f"{self.base_url}/invoices/ksef/{ksef_number}"
                 )
                 results.append({
                     "ksef_number": ksef_number,
                     "xml_content": xml_resp,
                 })
 
-            if len(invoices_list) < page_size:
+            has_more = resp.get("hasMore", False)
+            if not has_more:
                 break
-            page_offset += page_size
+            page_offset += 1
 
         return results
 
