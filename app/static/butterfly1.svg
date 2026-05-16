@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" fill="none" stroke="#e8a0a0" stroke-width="2.5" opacity="0.35">
+  <!-- left wing upper -->
+  <path d="M100 90 C70 40, 20 30, 30 70 C35 90, 60 95, 100 90" stroke-linecap="round"/>
+  <path d="M100 90 C75 55, 35 45, 40 75" stroke-linecap="round" stroke-width="1.8"/>
+  <!-- left wing lower -->
+  <path d="M100 90 C75 110, 35 130, 45 115 C55 100, 80 95, 100 90" stroke-linecap="round"/>
+  <!-- right wing upper -->
+  <path d="M100 90 C130 40, 180 30, 170 70 C165 90, 140 95, 100 90" stroke-linecap="round"/>
+  <path d="M100 90 C125 55, 165 45, 160 75" stroke-linecap="round" stroke-width="1.8"/>
+  <!-- right wing lower -->
+  <path d="M100 90 C125 110, 165 130, 155 115 C145 100, 120 95, 100 90" stroke-linecap="round"/>
+  <!-- body -->
+  <path d="M100 60 L100 130" stroke-width="3.2" stroke-linecap="round"/>
+  <!-- antennae -->
+  <path d="M100 60 C95 45, 85 35, 80 30" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M100 60 C105 45, 115 35, 120 30" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- wing details -->
+  <circle cx="65" cy="65" r="8" stroke-width="1.5"/>
+  <circle cx="135" cy="65" r="8" stroke-width="1.5"/>
+  <circle cx="70" cy="110" r="5" stroke-width="1.5"/>
+  <circle cx="130" cy="110" r="5" stroke-width="1.5"/>
+</svg>

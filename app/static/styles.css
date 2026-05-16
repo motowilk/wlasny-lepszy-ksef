@@ -2,6 +2,14 @@
    WŁASNY LEPSZY KSeF — minimalne style
    ========================================== */
 
+/* Background butterfly decorations */
+.bg-butterfly {
+    position: fixed;
+    z-index: -1;
+    pointer-events: none;
+    user-select: none;
+}
+
 *, *::before, *::after {
     box-sizing: border-box;
 }

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" fill="none" stroke="#a0d8a0" stroke-width="2.5" opacity="0.32">
+  <!-- a more whimsical, tilted butterfly -->
+  <!-- left upper wing - larger, rounder -->
+  <path d="M100 90 C55 35, 15 50, 30 80 C38 95, 70 100, 100 90" stroke-linecap="round"/>
+  <!-- left lower wing - trailing -->
+  <path d="M100 90 C70 105, 40 140, 55 140 C70 140, 90 110, 100 90" stroke-linecap="round"/>
+  <!-- right upper wing -->
+  <path d="M100 90 C145 35, 185 50, 170 80 C162 95, 130 100, 100 90" stroke-linecap="round"/>
+  <!-- right lower wing - trailing -->
+  <path d="M100 90 C130 105, 160 140, 145 140 C130 140, 110 110, 100 90" stroke-linecap="round"/>
+  <!-- wing patterns - scalloped edges -->
+  <path d="M40 70 C45 60, 55 55, 65 60" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M160 70 C155 60, 145 55, 135 60" stroke-width="1.4" stroke-linecap="round"/>
+  <!-- dots trail on wings -->
+  <circle cx="55" cy="65" r="3" stroke-width="1.5"/>
+  <circle cx="50" cy="80" r="4" stroke-width="1.5"/>
+  <circle cx="65" cy="55" r="2.5" stroke-width="1.5"/>
+  <circle cx="145" cy="65" r="3" stroke-width="1.5"/>
+  <circle cx="150" cy="80" r="4" stroke-width="1.5"/>
+  <circle cx="135" cy="55" r="2.5" stroke-width="1.5"/>
+  <!-- lower wing dots -->
+  <circle cx="65" cy="125" r="3" stroke-width="1.5"/>
+  <circle cx="135" cy="125" r="3" stroke-width="1.5"/>
+  <!-- body - segmented -->
+  <path d="M100 60 L100 125" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="100" cy="62" r="4" stroke-width="2"/>
+  <!-- antennae - wispy -->
+  <path d="M100 58 C90 40, 78 28, 72 25" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="72" cy="25" r="2" stroke-width="1.5"/>
+  <path d="M100 58 C110 40, 122 28, 128 25" stroke-width="1.5" stroke-linecap="round"/>
+  <circle cx="128" cy="25" r="2" stroke-width="1.5"/>
+</svg>

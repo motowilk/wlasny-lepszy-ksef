@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 180" fill="none" stroke="#9ec5e8" stroke-width="2.5" opacity="0.35">
+  <!-- left wing - more angular/geometric style -->
+  <path d="M100 90 C60 50, 25 55, 35 80 C40 95, 70 100, 100 90" stroke-linecap="round"/>
+  <path d="M100 90 C65 100, 30 120, 50 125 C65 128, 85 105, 100 90" stroke-linecap="round"/>
+  <!-- right wing -->
+  <path d="M100 90 C140 50, 175 55, 165 80 C160 95, 130 100, 100 90" stroke-linecap="round"/>
+  <path d="M100 90 C135 100, 170 120, 150 125 C135 128, 115 105, 100 90" stroke-linecap="round"/>
+  <!-- inner wing veins -->
+  <path d="M100 90 C80 70, 55 65, 50 75" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M100 90 C80 100, 55 110, 55 115" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M100 90 C120 70, 145 65, 150 75" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M100 90 C120 100, 145 110, 145 115" stroke-width="1.4" stroke-linecap="round"/>
+  <!-- body -->
+  <ellipse cx="100" cy="90" rx="3" ry="25" stroke-width="3"/>
+  <!-- antennae with curls -->
+  <path d="M100 65 C92 50, 82 40, 78 35 C75 32, 73 34, 75 37" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M100 65 C108 50, 118 40, 122 35 C125 32, 127 34, 125 37" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- wing spots -->
+  <ellipse cx="60" cy="75" rx="6" ry="8" stroke-width="1.5"/>
+  <ellipse cx="140" cy="75" rx="6" ry="8" stroke-width="1.5"/>
+  <circle cx="65" cy="112" r="4" stroke-width="1.5"/>
+  <circle cx="135" cy="112" r="4" stroke-width="1.5"/>
+</svg>
