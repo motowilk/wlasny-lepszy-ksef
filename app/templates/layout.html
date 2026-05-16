@@ -50,17 +50,10 @@
     var _cooldownTimer = null;
     var _lastPhase = null;
     var _lastRunning = null;
+    var _jobTypeLabels = {};
 
     function wsJobDescription(jobType) {
-        var map = {
-            'FETCH_KSEF_PURCHASES': 'Pobieranie faktur zakupowych',
-            'SEND_TO_KSEF': 'Wysyłanie do KSeF',
-            'POLL_KSEF_STATUS': 'Sprawdzanie statusu KSeF',
-            'SEND_BOOKED_NOTIFICATION': 'Wysyłanie powiadomienia',
-            'SEND_ACCOUNTING_BATCH': 'Batch księgowy',
-            'SEND_DISCORD_NOTIFICATION': 'Powiadomienie Discord'
-        };
-        return map[jobType] || jobType || 'Przetwarzanie';
+        return _jobTypeLabels[jobType] || jobType || 'Przetwarzanie';
     }
 
     function wsStopAllTimers() {
@@ -71,6 +64,7 @@
 
     function wsRender(data) {
         if (data.scheduler_interval) _schedulerInterval = data.scheduler_interval;
+        if (data.job_type_labels) _jobTypeLabels = data.job_type_labels;
 
         var running = data.running;
         var phase = data.phase;       // "idle" | "processing" | "cooldown"

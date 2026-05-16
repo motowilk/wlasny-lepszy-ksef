@@ -7,6 +7,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import delete, select
 
 from app.core.config import settings
+from app.core.job_registry import (
+    JOB_TYPE_LABELS,
+    JOB_TYPES,
+    STATUS_LABELS,
+    SYNTHETIC_JOB_TYPES,
+)
 from app.db.models import IntegrationJob, WorkerHeartbeat
 from app.db.session import SessionLocal
 from app.services.ksef_service import KsefService
@@ -50,23 +56,6 @@ class Scheduler:
             return
         discord.send(summary)
 
-    _JOB_TYPE_LABELS = {
-        "SEND_TO_KSEF": "Wysyłanie do KSeF",
-        "POLL_KSEF_STATUS": "Sprawdzanie statusu KSeF",
-        "SEND_BOOKED_NOTIFICATION": "Wysyłanie powiadomienia",
-        "SEND_ACCOUNTING_BATCH": "Batch księgowy",
-        "FETCH_KSEF_PURCHASES": "Pobieranie faktur zakupowych",
-        "POLL_GITHUB_PROJECT": "Sprawdzanie tablicy GitHub",
-    }
-
-    _STATUS_LABELS = {
-        "done": "wykonano",
-        "skipped": "pominięto",
-        "failed": "błąd",
-        "running": "w trakcie",
-        "pending": "oczekuje",
-    }
-
     def _run_synthetic_job(self, job_type: str) -> None:
         """Execute synthetic jobs that don't have a DB record."""
         if job_type == "POLL_GITHUB_PROJECT":
@@ -80,8 +69,8 @@ class Scheduler:
                 jid = entry.get("job_id")
                 if jt == "SEND_DISCORD_NOTIFICATION":
                     continue
-                label = self._JOB_TYPE_LABELS.get(jt, jt)
-                status_label = self._STATUS_LABELS.get(st, st)
+                label = JOB_TYPE_LABELS.get(jt, jt)
+                status_label = STATUS_LABELS.get(st, st)
                 id_part = f" (id={jid})" if jid else ""
                 lines.append(f"\u2022 {label}{id_part} \u2014 {status_label}")
             self._notify_discord("\n".join(lines))
@@ -254,16 +243,6 @@ class Scheduler:
         self._release_job_lock(job)
         db.commit()
 
-    # All known job types — shown in toast on every tick
-    JOB_TYPES = [
-        "SEND_TO_KSEF",
-        "POLL_KSEF_STATUS",
-        "SEND_BOOKED_NOTIFICATION",
-        "SEND_ACCOUNTING_BATCH",
-        "FETCH_KSEF_PURCHASES",
-        "POLL_GITHUB_PROJECT",
-        "SEND_DISCORD_NOTIFICATION",
-    ]
 
     # ─── Main tick: process ALL pending jobs ────────────────────────────
     def process_all_jobs(self) -> None:
@@ -280,11 +259,11 @@ class Scheduler:
                 job_by_type.setdefault(job.job_type, []).append(job)
 
             task_list = []
-            for jt in self.JOB_TYPES:
+            for jt in JOB_TYPES:
                 if jt in job_by_type:
                     for j in job_by_type[jt]:
                         task_list.append({"job_id": j.id, "job_type": jt, "status": "pending", "_job": j})
-                elif jt in ("SEND_DISCORD_NOTIFICATION", "POLL_GITHUB_PROJECT"):
+                elif jt in SYNTHETIC_JOB_TYPES:
                     # Always run — synthetic job, no DB record needed
                     task_list.append({"job_id": None, "job_type": jt, "status": "pending", "_job": "synthetic"})
                 else:

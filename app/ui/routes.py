@@ -36,6 +36,7 @@ from app.db.models import (
     Party,
 )
 from app.adapters.notification.discord import DiscordNotificationAdapter
+from app.core.job_registry import JOB_TYPE_LABELS
 from app.schemas.invoice import (
     InvoiceCreateRequest,
     InvoiceLinePayload,
@@ -213,6 +214,7 @@ def ui_worker_status(
             "current_jobs": current_jobs,
             "queue": {"new": new_count, "processing": processing_count},
             "scheduler_interval": settings.scheduler_interval,
+            "job_type_labels": JOB_TYPE_LABELS,
         }
     )
 
