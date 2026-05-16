@@ -52,6 +52,10 @@ class Settings(BaseSettings):
 
     discord_webhook_url: str = Field(default="", alias="DISCORD_WEBHOOK_URL")
 
+    github_token: str = Field(default="", alias="GITHUB_TOKEN")
+    github_project_org: str = Field(default="CIRFMF", alias="GITHUB_PROJECT_ORG")
+    github_project_number: int = Field(default=4, alias="GITHUB_PROJECT_NUMBER")
+
     ksef_api_url: str = Field(
         default="https://api.ksef.mf.gov.pl/v2",
         alias="KSEF_API_URL",

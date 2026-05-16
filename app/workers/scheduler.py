@@ -56,6 +56,7 @@ class Scheduler:
         "SEND_BOOKED_NOTIFICATION": "Wysyłanie powiadomienia",
         "SEND_ACCOUNTING_BATCH": "Batch księgowy",
         "FETCH_KSEF_PURCHASES": "Pobieranie faktur zakupowych",
+        "POLL_GITHUB_PROJECT": "Sprawdzanie tablicy GitHub",
     }
 
     _STATUS_LABELS = {
@@ -68,7 +69,10 @@ class Scheduler:
 
     def _run_synthetic_job(self, job_type: str) -> None:
         """Execute synthetic jobs that don't have a DB record."""
-        if job_type == "SEND_DISCORD_NOTIFICATION":
+        if job_type == "POLL_GITHUB_PROJECT":
+            from app.services.github_monitor_service import GitHubMonitorService
+            GitHubMonitorService.check_board_changes()
+        elif job_type == "SEND_DISCORD_NOTIFICATION":
             lines = ["**Podsumowanie cyklu schedulera:**"]
             for entry in scheduler_state.get("current_jobs", []):
                 jt = entry.get("job_type", "?")
@@ -257,6 +261,7 @@ class Scheduler:
         "SEND_BOOKED_NOTIFICATION",
         "SEND_ACCOUNTING_BATCH",
         "FETCH_KSEF_PURCHASES",
+        "POLL_GITHUB_PROJECT",
         "SEND_DISCORD_NOTIFICATION",
     ]
 
@@ -279,7 +284,7 @@ class Scheduler:
                 if jt in job_by_type:
                     for j in job_by_type[jt]:
                         task_list.append({"job_id": j.id, "job_type": jt, "status": "pending", "_job": j})
-                elif jt == "SEND_DISCORD_NOTIFICATION":
+                elif jt in ("SEND_DISCORD_NOTIFICATION", "POLL_GITHUB_PROJECT"):
                     # Always run — synthetic job, no DB record needed
                     task_list.append({"job_id": None, "job_type": jt, "status": "pending", "_job": "synthetic"})
                 else:

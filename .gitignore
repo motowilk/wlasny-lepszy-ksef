@@ -30,6 +30,7 @@ ENV/
 
 # === Logs & runtime data ===
 logs/
+data/
 *.log
 
 # === Test & coverage artefacts ===
