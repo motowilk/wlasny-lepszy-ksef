@@ -119,11 +119,7 @@
         <p><strong>ID:</strong> {{ invoice.id }}</p>
         <p><strong>Numer:</strong> {{ invoice.invoice_number }}</p>
         <p><strong>Kierunek:</strong>
-            {% if invoice.direction_code == 'PURCHASE' %}
-            <span class="pill pill-info">ZAKUP</span>
-            {% else %}
-            <span class="pill pill-danger">SPRZEDAŻ</span>
-            {% endif %}
+            <span class="pill {{ status_pill_class('direction', invoice.direction_code) }}">{{ status_label('direction', invoice.direction_code) }}</span>
         </p>
         <p><strong>KSeF:</strong> {{ invoice.ksef_number or "-" }}</p>
         <p><strong>Data wystawienia:</strong> {{ invoice.issue_date }}</p>
@@ -131,9 +127,11 @@
         <p><strong>Data wpływu:</strong> {{ invoice.receive_date or "-" }}</p>
         <p><strong>Termin płatności:</strong> {{ invoice.due_date or "-" }}</p>
         <p><strong>Status KSeF:</strong>
-            <span class="badge badge-ksef-{{ invoice.ksef_status_code | lower }}">{{ invoice.ksef_status_code }}</span>
+            <span class="badge {{ status_pill_class('ksef', invoice.ksef_status_code) }}">{{ status_label('ksef', invoice.ksef_status_code) }}</span>
         </p>
-        <p><strong>Status ERP:</strong> {{ invoice.erp_status or "-" }}</p>
+        <p><strong>Status ERP:</strong>
+            <span class="pill {{ status_pill_class('erp', invoice.erp_status) }}">{{ status_label('erp', invoice.erp_status) }}</span>
+        </p>
         {% if invoice.direction_code == 'PURCHASE' %}
         <p><strong>Kwalifikacja:</strong>
             {% if invoice.accounting_qualified is none %}—

@@ -88,11 +88,7 @@
                 <td>{{ item.issue_date or '-' }}</td>
                 <td>{{ item.due_date or '-' }}</td>
                 <td>
-                    {% if item.ksef_status_code in ('ACCEPTED', 'SENT') %}
-                    <span class="pill pill-success">{{ item.ksef_status_code }}</span>
-                    {% else %}
-                    <span class="pill pill-warning">{{ item.ksef_status_code }}</span>
-                    {% endif %}
+                    <span class="pill {{ status_pill_class('ksef', item.ksef_status_code) }}">{{ status_label('ksef', item.ksef_status_code) }}</span>
                 </td>
                 <td>
                     {% if item.accounting_qualified is none %}<span class="text-muted">—</span>

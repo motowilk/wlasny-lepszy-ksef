@@ -73,6 +73,13 @@ BATCH_STATUSES: list[StatusDef] = [
     StatusDef("SENT", "Wysłano", "pill-success", "🟢"),
 ]
 
+# ─── Direction Code ─────────────────────────────────────────────────────────
+
+DIRECTION_STATUSES: list[StatusDef] = [
+    StatusDef("SALE", "Sprzedaż", "pill-danger", "🟠"),
+    StatusDef("PURCHASE", "Zakup", "pill-info", "🔵"),
+]
+
 
 # ─── Derived lookup helpers ─────────────────────────────────────────────────
 
@@ -86,6 +93,7 @@ ACCOUNTING_STATUS_MAP: dict[str, StatusDef] = _build_lookup(ACCOUNTING_STATUSES)
 REVIEW_STATUS_MAP: dict[str, StatusDef] = _build_lookup(REVIEW_STATUSES)
 NOTIFICATION_STATUS_MAP: dict[str, StatusDef] = _build_lookup(NOTIFICATION_STATUSES)
 BATCH_STATUS_MAP: dict[str, StatusDef] = _build_lookup(BATCH_STATUSES)
+DIRECTION_STATUS_MAP: dict[str, StatusDef] = _build_lookup(DIRECTION_STATUSES)
 
 # Allowed-value sets (for validation in services)
 ALLOWED_KSEF_STATUSES: set[str] = {s.code for s in KSEF_STATUSES}
@@ -101,6 +109,7 @@ STATUS_REGISTRIES: dict[str, dict[str, StatusDef]] = {
     "review": REVIEW_STATUS_MAP,
     "notification": NOTIFICATION_STATUS_MAP,
     "batch": BATCH_STATUS_MAP,
+    "direction": DIRECTION_STATUS_MAP,
 }
 
 

@@ -18,7 +18,7 @@
 {% endif %}
 
 <div class="card">
-    <p><strong>Status:</strong> {{ batch.status }}</p>
+    <p><strong>Status:</strong> <span class="pill {{ status_pill_class('batch', batch.status) }}">{{ status_label('batch', batch.status) }}</span></p>
     <p><strong>Typ:</strong> {{ batch.batch_type }}</p>
     <p><strong>Okres:</strong> {{ batch.period_year }}-{{ "%02d" | format(batch.period_month) }}</p>
     <p><strong>Liczba pozycji:</strong> {{ batch.item_count }}</p>
@@ -95,11 +95,11 @@ document.getElementById('batch_type').addEventListener('change', function() {
             <tr>
                 <td>{{ item.invoice_id }}</td>
                 <td>{{ item.invoice.invoice_number if item.invoice else '-' }}</td>
-                <td>{{ item.invoice.direction_code if item.invoice else '-' }}</td>
+                <td><span class="pill {{ status_pill_class('direction', item.invoice.direction_code) }}">{{ status_label('direction', item.invoice.direction_code) if item.invoice else '-' }}</span></td>
                 <td>{{ item.invoice.issue_date if item.invoice else '-' }}</td>
                 <td>{{ item.invoice.gross_total|plnum if item.invoice else '-' }}</td>
                 <td>
-                    <span class="pill-inclusion">{{ item.inclusion_status }}</span>
+                    <span class="pill pill-success">{{ item.inclusion_status }}</span>
                 </td>
                 <td>
                     <a class="btn-detail mr-6" href="/ui/invoices/{{ item.invoice_id }}">Szczegóły</a>

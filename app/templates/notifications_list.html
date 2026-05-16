@@ -21,7 +21,7 @@
             <td>{{ item.notification_uuid }}</td>
             <td>{{ item.channel }}</td>
             <td>{{ item.recipient }}</td>
-            <td>{{ item.status }}</td>
+            <td><span class="pill {{ status_pill_class('notification', item.status) }}">{{ status_label('notification', item.status) }}</span></td>
             <td>{{ item.sent_at or "-" }}</td>
         </tr>
     {% endfor %}

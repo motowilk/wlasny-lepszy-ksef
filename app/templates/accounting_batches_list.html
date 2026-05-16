@@ -64,11 +64,7 @@
             <td>{{ item.batch_code }}</td>
             <td>{{ item.batch_type }}</td>
             <td>
-                {% if item.status == 'SENT' %}
-                <span class="pill pill-success">{{ item.status }}</span>
-                {% else %}
-                <span class="pill pill-warning">{{ item.status }}</span>
-                {% endif %}
+                <span class="pill {{ status_pill_class('batch', item.status) }}">{{ status_label('batch', item.status) }}</span>
             </td>
             <td>{{ item.send_at.strftime('%Y-%m-%d %H:%M') if item.send_at else '—' }}</td>
             <td>{{ item.period_year }}</td>

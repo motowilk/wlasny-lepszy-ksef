@@ -59,20 +59,12 @@
                 <td>{{ item.invoice_number }}</td>
                 <td>{{ seller_name }}</td>
                 <td>{{ buyer_name }}</td>
-                <td>{{ item.direction_code }}</td>
+                <td><span class="pill {{ status_pill_class('direction', item.direction_code) }}">{{ status_label('direction', item.direction_code) }}</span></td>
                 <td>
-                    {% if item.ksef_status_code in ('ACCEPTED', 'SENT') %}
-                    <span class="pill pill-success">{{ item.ksef_status_code }}</span>
-                    {% else %}
-                    <span class="pill pill-warning">{{ item.ksef_status_code }}</span>
-                    {% endif %}
+                    <span class="pill {{ status_pill_class('ksef', item.ksef_status_code) }}">{{ status_label('ksef', item.ksef_status_code) }}</span>
                 </td>
                 <td>
-                    {% if item.erp_status and item.erp_status in ('EXPORTED', 'SYNCED', 'ACCEPTED', 'KSEF_ACCEPTED') %}
-                    <span class="pill pill-success">{{ item.erp_status }}</span>
-                    {% else %}
-                    <span class="pill pill-warning">{{ item.erp_status or 'BRAK' }}</span>
-                    {% endif %}
+                    <span class="pill {{ status_pill_class('erp', item.erp_status) }}">{{ status_label('erp', item.erp_status) }}</span>
                 </td>
                 <td>{{ item.gross_total|plnum }}</td>
                 <td><a class="btn-detail" href="/ui/invoices/{{ item.id }}">Szczegóły</a></td>
