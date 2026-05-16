@@ -1,5 +1,7 @@
 ## Własny Lepszy KSeF
 
+Instrukcja instalacji: https://github.com/motowilk/wlasny-lepszy-ksef#instalacja-i-konfiguracja 
+
 ## Czym jest ta aplikacja?
 
 **Własny Lepszy KSeF** to lokalny system do obsługi obiegu faktur zintegrowany z Krajowym Systemem e-Faktur (KSeF). Aplikacja służy właścicielowi firmy lub wyznaczonemu pracownikowi do wystawiania faktur sprzedażowych, rejestracji ich w KSeF oraz pobierania i akceptowania do księgowania kosztowego faktur zakupowych. Zakwalifikowane faktury są zbierane w batche miesięczne i wysyłane do zewnętrznego biura księgowego.
