@@ -57,13 +57,22 @@ Aplikacja jest przeznaczona dla właściciela małej lub średniej firmy (lub wy
 | Ręczne kompletowanie faktur dla biura | Automatyczne pakiety miesięczne z jednym kliknięciem |
 | Brak potwierdzenia wysyłki | Statusy i powiadomienia e-mail/Slack |
 
-<img width="2912" height="1284" alt="image" src="https://github.com/user-attachments/assets/72832e1f-7572-45a8-84db-c72bb9203fc9" />
-Statusy faktury:
-<img width="2014" height="1924" alt="image" src="https://github.com/user-attachments/assets/ea5669ea-86be-47fd-9051-d88189e09da6" />
+Dashboard:
+<img width="3476" height="2046" alt="image" src="https://github.com/user-attachments/assets/101f6ab4-ab1a-4a1f-af15-33493e60aa30" />
+Draft faktury:
+<img width="2368" height="1926" alt="image" src="https://github.com/user-attachments/assets/29fa085b-656c-4750-9759-e32bb92789c9" />
+Zakupowe:
+<img width="2366" height="832" alt="image" src="https://github.com/user-attachments/assets/40cef24f-15de-4bd1-aba2-8a73e509aeee" />
+Faktura zakupowa z KSeF:
+<img width="1842" height="1964" alt="image" src="https://github.com/user-attachments/assets/79c4e375-4562-4ba3-9d25-abbcd357dfbe" />
+Pakiety faktur do wysyłki do księgowości:
+<img width="1786" height="484" alt="image" src="https://github.com/user-attachments/assets/6aba1e58-ecd3-4e27-9d59-2350d6775e68" />
+Widok pakietu:
+<img width="1818" height="1100" alt="image" src="https://github.com/user-attachments/assets/f97f92e4-9e57-493e-8db6-3f02511e6829" />
 Kontrahenci:
-<img width="2046" height="270" alt="image" src="https://github.com/user-attachments/assets/cf26e6bf-782e-4d57-92ec-9e89a7a81d7e" />
-Użytkownicy:
-<img width="2026" height="264" alt="image" src="https://github.com/user-attachments/assets/97f3c363-62e6-4a2e-8148-453915b86e9a" />
+<img width="1790" height="278" alt="image" src="https://github.com/user-attachments/assets/92611512-f477-43d7-90c9-615a5d18a388" />
+Widok kontrahenta:
+<img width="1808" height="1510" alt="image" src="https://github.com/user-attachments/assets/eae6a6dd-a1f1-4832-84df-0ef97b87c28b" />
 
 
 ## Aktualna funkcjonalność aplikacji
