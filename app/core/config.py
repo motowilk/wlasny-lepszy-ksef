@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     admin_default_password: str = Field(default="", alias="ADMIN_DEFAULT_PASSWORD")
     ui_session_max_age: int = Field(default=43200, alias="UI_SESSION_MAX_AGE")
 
+    discord_webhook_url: str = Field(default="", alias="DISCORD_WEBHOOK_URL")
+
     ksef_api_url: str = Field(
         default="https://api.ksef.mf.gov.pl/v2",
         alias="KSEF_API_URL",

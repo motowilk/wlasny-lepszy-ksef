@@ -11,6 +11,7 @@ from app.db.models import IntegrationJob, WorkerHeartbeat
 from app.db.session import SessionLocal
 from app.services.ksef_service import KsefService
 from app.services.notification_service import NotificationService
+from app.adapters.notification.discord import DiscordNotificationAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,47 @@ class Scheduler:
     def _release_job_lock(job: IntegrationJob) -> None:
         job.locked_by = None
         job.locked_at = None
+
+    # ─── Discord webhook ────────────────────────────────────────────────
+    def _notify_discord(self, summary: str) -> None:
+        discord = DiscordNotificationAdapter()
+        if not discord.enabled:
+            return
+        discord.send(summary)
+
+    _JOB_TYPE_LABELS = {
+        "SEND_TO_KSEF": "Wysyłanie do KSeF",
+        "POLL_KSEF_STATUS": "Sprawdzanie statusu KSeF",
+        "SEND_BOOKED_NOTIFICATION": "Wysyłanie powiadomienia",
+        "SEND_ACCOUNTING_BATCH": "Batch księgowy",
+        "FETCH_KSEF_PURCHASES": "Pobieranie faktur zakupowych",
+    }
+
+    _STATUS_LABELS = {
+        "done": "wykonano",
+        "skipped": "pominięto",
+        "failed": "błąd",
+        "running": "w trakcie",
+        "pending": "oczekuje",
+    }
+
+    def _run_synthetic_job(self, job_type: str) -> None:
+        """Execute synthetic jobs that don't have a DB record."""
+        if job_type == "SEND_DISCORD_NOTIFICATION":
+            lines = ["**Podsumowanie cyklu schedulera:**"]
+            for entry in scheduler_state.get("current_jobs", []):
+                jt = entry.get("job_type", "?")
+                st = entry.get("status", "?")
+                jid = entry.get("job_id")
+                if jt == "SEND_DISCORD_NOTIFICATION":
+                    continue
+                label = self._JOB_TYPE_LABELS.get(jt, jt)
+                status_label = self._STATUS_LABELS.get(st, st)
+                id_part = f" (id={jid})" if jid else ""
+                lines.append(f"\u2022 {label}{id_part} \u2014 {status_label}")
+            self._notify_discord("\n".join(lines))
+        else:
+            raise ValueError(f"Unknown synthetic job: {job_type}")
 
     # ─── Heartbeat ──────────────────────────────────────────────────────
     def _write_heartbeat(
@@ -179,6 +221,7 @@ class Scheduler:
                 "imported_ids": [inv.id for inv in imported],
             }
 
+
         else:
             raise ValueError(f"Nieobsługiwany job_type={job.job_type}")
 
@@ -210,6 +253,7 @@ class Scheduler:
         "SEND_BOOKED_NOTIFICATION",
         "SEND_ACCOUNTING_BATCH",
         "FETCH_KSEF_PURCHASES",
+        "SEND_DISCORD_NOTIFICATION",
     ]
 
     # ─── Main tick: process ALL pending jobs ────────────────────────────
@@ -231,6 +275,9 @@ class Scheduler:
                 if jt in job_by_type:
                     for j in job_by_type[jt]:
                         task_list.append({"job_id": j.id, "job_type": jt, "status": "pending", "_job": j})
+                elif jt == "SEND_DISCORD_NOTIFICATION":
+                    # Always run — synthetic job, no DB record needed
+                    task_list.append({"job_id": None, "job_type": jt, "status": "pending", "_job": "synthetic"})
                 else:
                     task_list.append({"job_id": None, "job_type": jt, "status": "skipped", "_job": None})
 
@@ -262,6 +309,21 @@ class Scheduler:
                 if job is None:
                     # No work for this job type — mark skipped
                     scheduler_state["current_jobs"][idx]["status"] = "skipped"
+                    self._write_heartbeat(
+                        "ACTIVE", task["job_type"], task["job_id"],
+                        phase="processing",
+                        current_jobs=scheduler_state["current_jobs"],
+                    )
+                    continue
+
+                # Synthetic job (e.g. SEND_DISCORD_NOTIFICATION) — no DB record
+                if job == "synthetic":
+                    try:
+                        self._run_synthetic_job(task["job_type"])
+                        scheduler_state["current_jobs"][idx]["status"] = "done"
+                    except Exception as exc:
+                        logger.exception("Synthetic job %s failed: %s", task["job_type"], exc)
+                        scheduler_state["current_jobs"][idx]["status"] = "failed"
                     self._write_heartbeat(
                         "ACTIVE", task["job_type"], task["job_id"],
                         phase="processing",
