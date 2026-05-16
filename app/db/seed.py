@@ -94,7 +94,7 @@ def _seed_roles(db: Session) -> None:
         ("admin", "Administrator", "Pełne uprawnienia administracyjne"),
         ("agent", "Agent AI", "Tworzenie draftów i operacje automatyczne bez akceptacji"),
         ("reviewer", "Reviewer", "Edycja i akceptacja dokumentów"),
-        ("owner", "Właściciel/Operator", "Wystawianie faktur, kwalifikacja zakupów, zarządzanie batchami do biura księgowego"),
+        ("owner", "Właściciel/Operator", "Wystawianie faktur, kwalifikacja zakupów, zarządzanie pakietami do biura księgowego"),
         ("viewer", "Viewer", "Dostęp tylko do odczytu"),
     ]
     for role_code, role_name, description in items:

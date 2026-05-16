@@ -197,7 +197,7 @@ class AccountingService:
                         batch_id=batch.id,
                         invoice_id=invoice.id,
                         inclusion_status="SELECTED",
-                        inclusion_reason="Zakwalifikowana do batcha miesięcznego.",
+                        inclusion_reason="Zakwalifikowana do pakietu miesięcznego.",
                     )
                 )
                 invoice.accounting_batch_id = batch.batch_code
@@ -212,7 +212,7 @@ class AccountingService:
                         event_status="SUCCESS",
                         actor_type="SYSTEM",
                         actor_id="accounting_service",
-                        message="Dodano do batcha wysyłkowego do biura księgowego.",
+                        message="Dodano do pakietu wysyłkowego do biura księgowego.",
                         details={"batch_code": batch.batch_code},
                     )
                 )
@@ -251,7 +251,7 @@ class AccountingService:
         if not invoice.accounting_qualified:
             raise ValueError("Faktura nie jest zakwalifikowana do wysyłki do biura księgowego.")
         if invoice.accounting_batch_id:
-            raise ValueError(f"Faktura jest już w batchu: {invoice.accounting_batch_id}")
+            raise ValueError(f"Faktura jest już w pakiecie: {invoice.accounting_batch_id}")
 
         period_year = invoice.issue_date.year
         period_month = invoice.issue_date.month
@@ -291,7 +291,7 @@ class AccountingService:
                 batch_id=batch.id,
                 invoice_id=invoice.id,
                 inclusion_status="SELECTED",
-                inclusion_reason="Dodano ręcznie do batcha.",
+                inclusion_reason="Dodano ręcznie do pakietu.",
             )
         )
         invoice.accounting_batch_id = batch.batch_code
@@ -306,7 +306,7 @@ class AccountingService:
                 event_status="SUCCESS",
                 actor_type="USER",
                 actor_id=str(created_by) if created_by else "system",
-                message=f"Dodano do batcha {batch.batch_code}.",
+                message=f"Dodano do pakietu {batch.batch_code}.",
                 details={"batch_code": batch.batch_code},
             )
         )
@@ -360,13 +360,13 @@ class AccountingService:
         """Update batch_type and/or send_at on a GENERATED batch."""
         batch = db.get(AccountingBatch, batch_id)
         if not batch:
-            raise ValueError(f"Batch id={batch_id} nie istnieje.")
+            raise ValueError(f"Pakiet id={batch_id} nie istnieje.")
         if batch.status != "GENERATED":
-            raise ValueError("Nie można edytować batcha, który został już wysłany.")
+            raise ValueError("Nie można edytować pakietu, który został już wysłany.")
 
         if batch_type is not None:
             if batch_type not in ALLOWED_BATCH_TYPES:
-                raise ValueError(f"Nieprawidłowy typ batcha: {batch_type}. Dozwolone: {ALLOWED_BATCH_TYPES}")
+                raise ValueError(f"Nieprawidłowy typ pakietu: {batch_type}. Dozwolone: {ALLOWED_BATCH_TYPES}")
             batch.batch_type = batch_type
             # Update period fields based on type
             if batch_type == "WEEKLY":

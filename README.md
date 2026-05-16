@@ -4,7 +4,7 @@ Instrukcja instalacji: https://github.com/motowilk/wlasny-lepszy-ksef#instalacja
 
 ## Czym jest ta aplikacja?
 
-**Własny Lepszy KSeF** to lokalny system do obsługi obiegu faktur zintegrowany z Krajowym Systemem e-Faktur (KSeF). Aplikacja służy właścicielowi firmy lub wyznaczonemu pracownikowi do wystawiania faktur sprzedażowych, rejestracji ich w KSeF oraz pobierania i akceptowania do księgowania kosztowego faktur zakupowych. Zakwalifikowane faktury są zbierane w batche miesięczne i wysyłane do zewnętrznego biura księgowego.
+**Własny Lepszy KSeF** to lokalny system do obsługi obiegu faktur zintegrowany z Krajowym Systemem e-Faktur (KSeF). Aplikacja służy właścicielowi firmy lub wyznaczonemu pracownikowi do wystawiania faktur sprzedażowych, rejestracji ich w KSeF oraz pobierania i akceptowania do księgowania kosztowego faktur zakupowych. Zakwalifikowane faktury są zbierane w pakiety miesięczne i wysyłane do zewnętrznego biura księgowego.
 
 ## Dla kogo i po co?
 
@@ -14,7 +14,7 @@ Aplikacja jest przeznaczona dla właściciela małej lub średniej firmy (lub wy
 - potrzebuje **automatycznej wysyłki faktur do KSeF** bez ręcznego wklejania XML-i w portal MF
 - chce **importować faktury zakupowe z KSeF** i decydować, które trafiają do biura księgowego
 - potrzebuje **śladu audytowego** — kto, kiedy, co zrobił z dokumentem
-- chce **powiadomień e-mail/Slack** o wysłanych batchach do biura księgowego
+- chce **powiadomień e-mail/Slack** o wysłanych pakietach do biura księgowego
 - potrzebuje prostego podziału ról — agent AI tworzy drafty, reviewer akceptuje, właściciel kwalifikuje i wysyła do biura
 
 ## Jak wygląda miesiąc pracy z aplikacją?
@@ -35,9 +35,9 @@ Aplikacja jest przeznaczona dla właściciela małej lub średniej firmy (lub wy
 
 ### Koniec miesiąca: wysyłka do biura księgowego
 
-1. Właściciel generuje **batch miesięczny** — system zbiera wszystkie zakwalifikowane faktury z danego miesiąca w jedną paczkę.
-2. Batch dostaje kod (np. `BATCH-2026-05-A1B2C3D4`) i jest wysyłany do biura księgowego.
-3. Faktury w batchu zmieniają status na `sent_to_office`.
+1. Właściciel generuje **pakiet miesięczny** — system zbiera wszystkie zakwalifikowane faktury z danego miesiąca w jedną paczkę.
+2. Pakiet dostaje kod (np. `BATCH-2026-05-A1B2C3D4`) i jest wysyłany do biura księgowego.
+3. Faktury w pakiecie zmieniają status na `sent_to_office`.
 4. Biuro księgowe otrzymuje powiadomienie i księguje faktury w swoich systemach.
 
 ### Ciągłe w tle:
@@ -54,7 +54,7 @@ Aplikacja jest przeznaczona dla właściciela małej lub średniej firmy (lub wy
 | Excel z listą faktur zakupowych | Rejestr z importem z KSeF, filtrami, statusami |
 | Brak historii zmian | Pełny audit trail z eventami |
 | Brak procesu kwalifikacji | Workflow: draft → review → approve → KSeF → biuro |
-| Ręczne kompletowanie faktur dla biura | Automatyczne batche miesięczne z jednym kliknięciem |
+| Ręczne kompletowanie faktur dla biura | Automatyczne pakiety miesięczne z jednym kliknięciem |
 | Brak potwierdzenia wysyłki | Statusy i powiadomienia e-mail/Slack |
 
 <img width="2912" height="1284" alt="image" src="https://github.com/user-attachments/assets/72832e1f-7572-45a8-84db-c72bb9203fc9" />
@@ -87,12 +87,12 @@ Po skonfigurowaniu środowiska aplikacja udostępnia kompletny lokalny system do
 
 UI obejmuje:
 
-- dashboard z licznikami faktur, powiadomień i batchy księgowych
+- dashboard z licznikami faktur, powiadomień i pakietów księgowych
 - listę faktur sprzedażowych i zakupowych
 - formularz tworzenia nowej faktury sprzedażowej
 - widok szczegółów faktury z liniami, stronami dokumentu, eventami i payloadami
 - pobieranie PDF faktury (wizualizacja w formacie KSeF)
-- listę batchy księgowych i szczegóły batcha
+- listę pakietów księgowych i szczegóły pakietu
 - listę powiadomień
 - zarządzanie kontrahentami (lista, formularz dodawania/edycji)
 - zarządzanie użytkownikami (lista, formularz tworzenia, konfiguracja TOTP)
@@ -140,12 +140,12 @@ Workflow integracyjny:
 - kwalifikowanie lub odrzucanie faktury z procesu kosztowego
 - parser rozpoznaje strukturę FA(3) v1-0E: Podmiot1=SELLER, Podmiot2=BUYER, kody VAT (23, 22, 8, 7, 5, 4, 3, 0, zw, oo, np, oss)
 
-### 7. Batchowanie i wysyłka do biura księgowego
+### 7. Pakietowanie i wysyłka do biura księgowego
 
 - kwalifikacja faktury do wysyłki (`POST /api/invoices/{id}/qualify`)
-- dodanie do batcha (`POST /api/invoices/{id}/add-to-batch`)
-- generowanie batchy miesięcznych dla zakwalifikowanych faktur
-- listowanie, szczegóły i usuwanie faktury z batcha (przed wysyłką)
+- dodanie do pakietu (`POST /api/invoices/{id}/add-to-batch`)
+- generowanie pakietów miesięcznych dla zakwalifikowanych faktur
+- listowanie, szczegóły i usuwanie faktury z pakietu (przed wysyłką)
 
 Statusy procesu (`accounting_status`): `new` → `qualified` → `batched` → `sent_to_office` / `rejected`
 
@@ -153,8 +153,8 @@ Statusy procesu (`accounting_status`): `new` → `qualified` → `batched` → `
 
 Kanały: **E-mail** (SMTP z auto-rozpoznawaniem TLS) i **Slack**.
 
-- tworzenie i wysyłka powiadomień dla faktur i batchy
-- automatyczne powiadomienia po wysłaniu batcha do biura
+- tworzenie i wysyłka powiadomień dla faktur i pakietów
+- automatyczne powiadomienia po wysłaniu pakietu do biura
 - historia powiadomień z statusami i payloadami
 - eventy: `NOTIFICATION_CREATED`, `NOTIFICATION_SENT`, `NOTIFICATION_FAILED`
 
@@ -174,7 +174,7 @@ Kanały: **E-mail** (SMTP z auto-rozpoznawaniem TLS) i **Slack**.
 ### 11. Zdarzenia i ślad audytowy
 
 Dla dokumentów zapisywane są:
-- eventy biznesowe (utworzenie, aktualizacja, akceptacja, kwalifikacja, batching)
+- eventy biznesowe (utworzenie, aktualizacja, akceptacja, kwalifikacja, pakietowanie)
 - eventy integracyjne (wysyłka do KSeF, akceptacja/odrzucenie, powiadomienia)
 - payloady XML/JSON
 - znaczniki czasu i informacje o aktorze
@@ -488,8 +488,8 @@ Baza `ksef_erp` po uruchomieniu migracji Alembic:
 
 | Tabela | Zawartość |
 | --- | --- |
-| `accounting_batch` | Batche miesięczne |
-| `accounting_batch_invoice` | Faktury w batchach |
+| `accounting_batch` | Pakiety miesięczne |
+| `accounting_batch_invoice` | Faktury w pakietach |
 | `notification_log` | Historia powiadomień (e-mail, Slack) |
 
 ### Monitorowanie i słowniki

@@ -34,7 +34,7 @@ ERP_STATUSES: list[StatusDef] = [
     StatusDef("KSEF_REJECTED", "Odrzucono w KSeF", "pill-danger", "🔴"),
     StatusDef("READY_FOR_ACCOUNTING", "Gotowa do księgowości", "pill-info", "🔵"),
     StatusDef("BLOCKED", "Zablokowana", "pill-danger", "🔴"),
-    StatusDef("ACCOUNTING_BATCHED", "W batchu księgowym", "pill-info", "🔵"),
+    StatusDef("ACCOUNTING_BATCHED", "W pakiecie księgowym", "pill-info", "📵"),
     StatusDef("SENT_TO_OFFICE", "Wysłano do biura", "pill-success", "🟢"),
     StatusDef("APPROVED", "Zatwierdzona", "pill-success", "🟢"),
 ]
@@ -44,7 +44,7 @@ ERP_STATUSES: list[StatusDef] = [
 ACCOUNTING_STATUSES: list[StatusDef] = [
     StatusDef("new", "Nowa", "pill-warning", "🟡"),
     StatusDef("qualified", "Zakwalifikowana", "pill-info", "🔵"),
-    StatusDef("batched", "W batchu", "pill-info", "🔵"),
+    StatusDef("batched", "W pakiecie", "pill-info", "📵"),
     StatusDef("sent_to_office", "Wysłano do biura", "pill-success", "🟢"),
     StatusDef("rejected", "Odrzucona", "pill-danger", "🔴"),
 ]
@@ -66,7 +66,7 @@ NOTIFICATION_STATUSES: list[StatusDef] = [
     StatusDef("FAILED", "Błąd", "pill-danger", "🔴"),
 ]
 
-# ─── Accounting Batch Status ────────────────────────────────────────────────
+# ─── Status pakietu księgowego ───────────────────────────────────────────────
 
 BATCH_STATUSES: list[StatusDef] = [
     StatusDef("GENERATED", "Wygenerowany", "pill-warning", "🟡"),

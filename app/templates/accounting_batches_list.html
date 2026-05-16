@@ -1,13 +1,13 @@
 {% extends "layout.html" %}
 
 {% block content %}
-<h1>Batche księgowe</h1>
+<h1>Pakiety księgowe</h1>
 
 {% if error %}
 <div class="alert alert-danger" role="alert">{{ error }}</div>
 {% endif %}
 
-<form method="get" action="/ui/accounting-batches">
+<form method="get" action="/ui/pakiety-ksiegowe">
 <table class="table">
     <thead>
         <tr>
@@ -44,7 +44,7 @@
             <th class="th-filter">
                 <button type="submit" class="btn btn-filter">Filtruj</button>
                 {% if q or filter_year or filter_month or filter_week %}
-                <a href="/ui/accounting-batches" class="filter-btn-clear" style="margin-left:4px;text-decoration:none;display:inline-flex;align-items:center">✕</a>
+                <a href="/ui/pakiety-ksiegowe" class="filter-btn-clear" style="margin-left:4px;text-decoration:none;display:inline-flex;align-items:center">✕</a>
                 {% endif %}
             </th>
         </tr>
@@ -75,7 +75,7 @@
             <td>{{ item.period_month if item.period_month else '—' }}</td>
             <td>{{ item.period_week if item.period_week else '—' }}</td>
             <td>{{ item.item_count }}</td>
-            <td><a class="btn-detail" href="/ui/accounting-batches/{{ item.id }}">Szczegóły</a></td>
+            <td><a class="btn-detail" href="/ui/pakiety-ksiegowe/{{ item.id }}">Szczegóły</a></td>
         </tr>
     {% endfor %}
     </tbody>

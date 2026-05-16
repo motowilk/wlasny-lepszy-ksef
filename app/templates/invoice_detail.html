@@ -22,7 +22,7 @@
         </form>
         {% endif %}
 
-        {# PURCHASE actions: qualify, reject, add to batch #}
+        {# PURCHASE actions: qualify, reject, add to pakiet #}
         {% if invoice.direction_code == 'PURCHASE' %}
             {% if not invoice.accounting_qualified %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/qualify" class="inline-form ml-6">
@@ -35,8 +35,8 @@
             {% endif %}
             {% endif %}
             {% if invoice.accounting_qualified and not invoice.accounting_batch_id %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/add-to-batch" class="inline-form ml-6">
-                <button class="btn" type="submit">Dodaj do batcha</button>
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
+                <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
             <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
                 <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
@@ -44,7 +44,7 @@
             {% endif %}
         {% endif %}
 
-        {# SALE with KSEF_ACCEPTED can also be added to batch #}
+        {# SALE with KSEF_ACCEPTED can also be added to pakiet #}
         {% if invoice.direction_code == 'SALE' and invoice.ksef_status_code == 'ACCEPTED' and not invoice.accounting_batch_id %}
             {% if not invoice.accounting_qualified %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/qualify" class="inline-form ml-6">
@@ -52,8 +52,8 @@
             </form>
             {% endif %}
             {% if invoice.accounting_qualified %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/add-to-batch" class="inline-form ml-6">
-                <button class="btn" type="submit">Dodaj do batcha</button>
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
+                <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
             <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
                 <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
@@ -142,7 +142,7 @@
             <span class="text-danger">NIE</span>
             {% endif %}
         </p>
-        <p><strong>Batch:</strong> {{ invoice.accounting_batch_id or "-" }}</p>
+        <p><strong>Pakiet:</strong> {{ invoice.accounting_batch_id or "-" }}</p>
         {% if invoice.accounting_notes %}
         <p><strong>Notatki:</strong> {{ invoice.accounting_notes }}</p>
         {% endif %}

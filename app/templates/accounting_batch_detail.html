@@ -2,8 +2,8 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Batch {{ batch.batch_code }}</h1>
-    <a class="btn secondary" href="/ui/accounting-batches">Powrót</a>
+    <h1>Pakiet {{ batch.batch_code }}</h1>
+    <a class="btn secondary" href="/ui/pakiety-ksiegowe">Powrót</a>
 </div>
 
 {% if action_success %}
@@ -30,8 +30,8 @@
 
 {% if batch.status == 'GENERATED' %}
 <div class="card mt-16">
-    <h2>Ustawienia batcha</h2>
-    <form method="post" action="/ui/accounting-batches/{{ batch.id }}/update-settings">
+    <h2>Ustawienia pakietu</h2>
+    <form method="post" action="/ui/pakiety-ksiegowe/{{ batch.id }}/update-settings">
         <div class="filter-panel">
             <div>
                 <label for="batch_type" class="label-upper">Typ</label>
@@ -77,7 +77,7 @@ document.getElementById('batch_type').addEventListener('change', function() {
 {% endif %}
 
 <section class="card mt-16">
-    <h2>Faktury w batchu</h2>
+    <h2>Faktury w pakiecie</h2>
     <table class="table">
         <thead>
             <tr>
@@ -104,8 +104,8 @@ document.getElementById('batch_type').addEventListener('change', function() {
                 <td>
                     <a class="btn-detail mr-6" href="/ui/invoices/{{ item.invoice_id }}">Szczegóły</a>
                     {% if batch.status == 'GENERATED' %}
-                    <form method="post" action="/ui/accounting-batches/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form d-inline">
-                        <button type="submit" class="btn danger btn-sm" onclick="return confirm('Usunąć fakturę z batcha?')">Usuń z batcha</button>
+                    <form method="post" action="/ui/pakiety-ksiegowe/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form d-inline">
+                        <button type="submit" class="btn danger btn-sm" onclick="return confirm('Usunąć fakturę z pakietu?')">Usuń z pakietu</button>
                     </form>
                     {% endif %}
                 </td>

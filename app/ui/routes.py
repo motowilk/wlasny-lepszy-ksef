@@ -422,7 +422,7 @@ def dashboard(
             select(func.count()).select_from(Invoice).where(Invoice.direction_code == "PURCHASE")
         ),
         "notifications": db.scalar(select(func.count()).select_from(NotificationLog)),
-        "batches": db.scalar(select(func.count()).select_from(AccountingBatch)),
+        "pakiety": db.scalar(select(func.count()).select_from(AccountingBatch)),
     }
 
     latest_invoices = list(
@@ -1263,7 +1263,7 @@ def invoice_undo_qualify(
         if not invoice:
             raise ValueError("Faktura nie istnieje.")
         if invoice.accounting_batch_id:
-            raise ValueError("Nie można cofnąć kwalifikacji — faktura jest już w batchu.")
+            raise ValueError("Nie można cofnąć kwalifikacji — faktura jest już w pakiecie.")
 
         invoice.accounting_qualified = None
         invoice.accounting_marked_by = None
@@ -1291,7 +1291,7 @@ def invoice_undo_qualify(
     return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
-@router.post("/ui/invoices/{invoice_id}/add-to-batch")
+@router.post("/ui/invoices/{invoice_id}/dodaj-do-pakietu")
 def invoice_add_to_batch(
     invoice_id: int,
     db: Session = Depends(get_db),
@@ -1306,7 +1306,7 @@ def invoice_add_to_batch(
             invoice_id=invoice_id,
             created_by=current_user.id,
         )
-        params = urlencode({"action_success": f"Dodano do batcha {batch.batch_code}."})
+        params = urlencode({"action_success": f"Dodano do pakietu {batch.batch_code}."})
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
@@ -1698,7 +1698,7 @@ def party_delete(
         )
 
 
-@router.get("/ui/accounting-batches")
+@router.get("/ui/pakiety-ksiegowe")
 def accounting_batches_list(
     request: Request,
     q: str = "",
@@ -1781,7 +1781,7 @@ def accounting_batches_list(
     )
 
 
-@router.get("/ui/accounting-batches/{batch_id}")
+@router.get("/ui/pakiety-ksiegowe/{batch_id}")
 def accounting_batch_detail(
     batch_id: int,
     request: Request,
@@ -1792,7 +1792,7 @@ def accounting_batch_detail(
 ):
     batch = db.get(AccountingBatch, batch_id)
     if not batch:
-        return RedirectResponse(url=f"/ui/accounting-batches?error={_url_quote('Batch nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"/ui/pakiety-ksiegowe?error={_url_quote('Pakiet nie istnieje.')}", status_code=303)
 
     items = list(
         db.execute(
@@ -1817,7 +1817,7 @@ def accounting_batch_detail(
     )
 
 
-@router.post("/ui/accounting-batches/{batch_id}/remove-invoice/{invoice_id}")
+@router.post("/ui/pakiety-ksiegowe/{batch_id}/remove-invoice/{invoice_id}")
 def batch_remove_invoice(
     batch_id: int,
     invoice_id: int,
@@ -1830,7 +1830,7 @@ def batch_remove_invoice(
     try:
         batch = db.get(AccountingBatch, batch_id)
         if not batch:
-            raise ValueError("Batch nie istnieje.")
+            raise ValueError("Pakiet nie istnieje.")
 
         link = db.execute(
             select(AccountingBatchInvoice).where(
@@ -1839,7 +1839,7 @@ def batch_remove_invoice(
             )
         ).scalar_one_or_none()
         if not link:
-            raise ValueError("Faktura nie jest w tym batchu.")
+            raise ValueError("Faktura nie jest w tym pakiecie.")
 
         invoice = db.get(Invoice, invoice_id)
         db.delete(link)
@@ -1857,7 +1857,7 @@ def batch_remove_invoice(
                     event_status="SUCCESS",
                     actor_type="USER",
                     actor_id=str(current_user.id),
-                    message=f"Usunięto z batcha {batch.batch_code}.",
+                    message=f"Usunięto z pakietu {batch.batch_code}.",
                 )
             )
 
@@ -1867,17 +1867,17 @@ def batch_remove_invoice(
             db.commit()
             from urllib.parse import urlencode
             params = urlencode({"batch_deleted": "1"})
-            return RedirectResponse(url=f"/ui/accounting-batches", status_code=303)
+            return RedirectResponse(url=f"/ui/pakiety-ksiegowe", status_code=303)
 
         db.commit()
-        params = urlencode({"action_success": f"Usunięto fakturę #{invoice_id} z batcha."})
+        params = urlencode({"action_success": f"Usunięto fakturę #{invoice_id} z pakietu."})
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/accounting-batches/{batch_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
 
 
-@router.post("/ui/accounting-batches/{batch_id}/update-settings")
+@router.post("/ui/pakiety-ksiegowe/{batch_id}/update-settings")
 def batch_update_settings(
     batch_id: int,
     batch_type: str = Form(...),
@@ -1899,11 +1899,11 @@ def batch_update_settings(
             batch_type=batch_type,
             send_at=parsed_send_at,
         )
-        params = urlencode({"action_success": "Ustawienia batcha zostały zapisane."})
+        params = urlencode({"action_success": "Ustawienia pakietu zostały zapisane."})
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/accounting-batches/{batch_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
 
 
 @router.get("/ui/notifications")
