@@ -335,6 +335,10 @@ class Scheduler:
                     )
                     continue
 
+                # POLL_KSEF_STATUS jobs are handled as a batch below
+                if task["job_type"] == "POLL_KSEF_STATUS":
+                    continue
+
                 logger.info("Processing job id=%s type=%s", job.id, job.job_type)
 
                 try:
@@ -362,6 +366,32 @@ class Scheduler:
                             self._reschedule_job(db, job, exc)
                     except Exception:
                         db.rollback()
+
+            # Process POLL_KSEF_STATUS jobs as a batch via the service
+            poll_indices = [
+                i for i, t in enumerate(task_list)
+                if t["job_type"] == "POLL_KSEF_STATUS" and t["_job"] is not None
+            ]
+            if poll_indices:
+                poll_jobs = [task_list[i]["_job"] for i in poll_indices]
+                batch_result = KsefService.process_poll_ksef_status_batch(db, poll_jobs)
+                for i, res in zip(poll_indices, batch_result["results"]):
+                    job = task_list[i]["_job"]
+                    if res["result"] == "accepted":
+                        job.status = "DONE"
+                        job.finished_at = datetime.now(tz=timezone.utc)
+                        self._release_job_lock(job)
+                        scheduler_state["current_jobs"][i]["status"] = "done"
+                    elif res["result"] == "pending":
+                        self._release_job_lock(job)
+                        scheduler_state["current_jobs"][i]["status"] = "done"
+                    elif res["result"] == "rejected":
+                        job.status = "FAILED"
+                        job.last_error_message = res.get("error", "")
+                        job.finished_at = datetime.now(tz=timezone.utc)
+                        self._release_job_lock(job)
+                        scheduler_state["current_jobs"][i]["status"] = "failed"
+                    db.commit()
 
             # All jobs processed — enter cooldown (15s) to show results
             now = datetime.now(tz=timezone.utc)

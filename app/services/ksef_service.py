@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -5,6 +6,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.notification.discord import DiscordNotificationAdapter
 from app.core.config import get_settings
 from app.db.models import IntegrationJob, Invoice, InvoiceEvent, InvoicePayload
 
@@ -249,6 +251,52 @@ class KsefService:
             job.scheduled_at = datetime.now(tz=timezone.utc) + _poll_retry_delay(job.attempts)
 
         return job
+
+    @staticmethod
+    def process_poll_ksef_status_batch(
+        db: Session, jobs: list[IntegrationJob]
+    ) -> dict:
+        """
+        Process a batch of POLL_KSEF_STATUS jobs and send a single Discord
+        notification summarising accepted/rejected invoices.
+
+        Returns dict with 'accepted', 'rejected', 'pending' counts and per-job results.
+        """
+        logger = logging.getLogger(__name__)
+        accepted_count = 0
+        rejected_numbers: list[str] = []
+        results: list[dict] = []
+
+        for job in jobs:
+            try:
+                KsefService.process_poll_ksef_status_job(db, job)
+                resp = job.response_payload or {}
+                if resp.get("ksefNumber"):
+                    accepted_count += 1
+                    results.append({"job_id": job.id, "result": "accepted"})
+                elif resp.get("poll_status") == "PENDING":
+                    results.append({"job_id": job.id, "result": "pending"})
+            except Exception as exc:
+                logger.warning("POLL_KSEF_STATUS job id=%s failed: %s", job.id, exc)
+                invoice = db.get(Invoice, job.invoice_id) if job.invoice_id else None
+                inv_number = invoice.invoice_number if invoice else f"id={job.invoice_id}"
+                rejected_numbers.append(inv_number)
+                results.append({"job_id": job.id, "result": "rejected", "error": str(exc)})
+
+        if accepted_count or rejected_numbers:
+            msg = (
+                f"Sprawdzono faktury sprzeda\u017cowe, liczba poprawnych: {accepted_count}, "
+                f"liczba odrzuconych: {len(rejected_numbers)}"
+            )
+            if rejected_numbers:
+                msg += "\nOdrzucone faktury: " + ", ".join(rejected_numbers)
+            DiscordNotificationAdapter().send(msg)
+
+        return {
+            "accepted": accepted_count,
+            "rejected": len(rejected_numbers),
+            "results": results,
+        }
 
     @staticmethod
     def _generate_mock_ksef_number(invoice_id: int) -> str:
