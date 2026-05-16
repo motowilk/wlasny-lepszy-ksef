@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 from sqlalchemy import delete as sql_delete, func, select
+from sqlalchemy.exc import IntegrityError as SAIntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
@@ -582,7 +583,7 @@ def invoice_new_form(
         if src:
             fa_meta = src.fa_metadata or {}
             prefill = {
-                "invoice_number": src.invoice_number,
+                "invoice_number": "",
                 "issue_date": str(src.issue_date),
                 "issue_place": fa_meta.get("issue_place", ""),
                 "sale_date": str(src.sale_date) if src.sale_date else "",
@@ -767,13 +768,69 @@ async def invoice_create_submit(
             lines=lines,
         )
         invoice = InvoiceService.create_invoice(db, payload, actor_id=str(current_user.id))
+    except SAIntegrityError as exc:
+        db.rollback()
+        if "uq_invoice_invoice_number" in str(exc):
+            error_msg = f"Faktura o numerze '{invoice_number}' już istnieje w bazie."
+        else:
+            error_msg = "Błąd zapisu faktury (naruszenie ograniczeń bazy danych)."
     except (InvalidOperation, ValidationError, ValueError) as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="Nieprawidłowe dane formularza faktury.",
-        ) from exc
+        error_msg = str(exc) if str(exc) else "Nieprawidłowe dane formularza faktury."
+    else:
+        return RedirectResponse(url=f"/ui/invoices/{invoice.id}", status_code=303)
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice.id}", status_code=303)
+    # Re-render form with error and previously entered data
+    all_parties = list(
+        db.execute(select(Party).where(Party.is_active.is_(True)).order_by(Party.name_full))
+        .scalars()
+        .all()
+    )
+    prefill_lines = []
+    for i in range(1, line_count + 1):
+        desc = _s(f"line_description_{i}")
+        if not desc:
+            continue
+        prefill_lines.append({
+            "description": desc,
+            "unit": _s(f"line_unit_{i}"),
+            "qty": _s(f"line_qty_{i}", "1"),
+            "price": _s(f"line_price_{i}", "0"),
+            "vat_code": _s(f"line_vat_{i}", "23"),
+        })
+    prefill = {
+        "invoice_number": invoice_number,
+        "issue_date": issue_date_str,
+        "issue_place": issue_place,
+        "sale_date": sale_date_str,
+        "due_date": due_date_str,
+        "currency_code": currency_code,
+        "exchange_rate": exchange_rate_str,
+        "payment_method": payment_method or "",
+        "payment_account": payment_account or "",
+        "payment_swift": payment_swift,
+        "payment_bank_name": payment_bank_name,
+        "contract_date": contract_date_str,
+        "contract_number": contract_number,
+        "footer_note": footer_note,
+        "seller_party_id": int(seller_party_id_str) if seller_party_id_str else None,
+        "buyer_party_id": int(buyer_party_id_str) if buyer_party_id_str else None,
+        "lines": prefill_lines,
+    }
+    return templates.TemplateResponse(
+        "invoice_form.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "mode": "create",
+            "prefill": prefill,
+            "parties": all_parties,
+            "parties_json": [
+                {"id": p.id, "bank_account": p.bank_account or ""}
+                for p in all_parties
+            ],
+            "error": error_msg,
+        },
+    )
 
 
 @router.get("/ui/invoices/{invoice_id}/edit")
@@ -994,13 +1051,70 @@ async def invoice_edit_submit(
             lines=lines,
         )
         InvoiceService.update_invoice(db, invoice_id, payload, actor_id=str(current_user.id))
+    except SAIntegrityError as exc:
+        db.rollback()
+        if "uq_invoice_invoice_number" in str(exc):
+            error_msg = f"Faktura o numerze '{invoice_number}' już istnieje w bazie."
+        else:
+            error_msg = "Błąd zapisu faktury (naruszenie ograniczeń bazy danych)."
     except (InvalidOperation, ValidationError, ValueError) as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Nieprawidłowe dane formularza faktury: {exc}",
-        ) from exc
+        error_msg = str(exc) if str(exc) else "Nieprawidłowe dane formularza faktury."
+    else:
+        return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
+    # Re-render form with error and previously entered data
+    all_parties = list(
+        db.execute(select(Party).where(Party.is_active.is_(True)).order_by(Party.name_full))
+        .scalars()
+        .all()
+    )
+    prefill_lines = []
+    for i in range(1, line_count + 1):
+        desc = _s(f"line_description_{i}")
+        if not desc:
+            continue
+        prefill_lines.append({
+            "description": desc,
+            "unit": _s(f"line_unit_{i}"),
+            "qty": _s(f"line_qty_{i}", "1"),
+            "price": _s(f"line_price_{i}", "0"),
+            "vat_code": _s(f"line_vat_{i}", "23"),
+        })
+    prefill = {
+        "invoice_number": invoice_number,
+        "issue_date": issue_date_str,
+        "issue_place": issue_place,
+        "sale_date": sale_date_str,
+        "due_date": due_date_str,
+        "currency_code": currency_code,
+        "exchange_rate": exchange_rate_str,
+        "payment_method": payment_method or "",
+        "payment_account": payment_account or "",
+        "payment_swift": payment_swift,
+        "payment_bank_name": payment_bank_name,
+        "contract_date": contract_date_str,
+        "contract_number": contract_number,
+        "footer_note": footer_note,
+        "seller_party_id": int(seller_party_id_str) if seller_party_id_str else None,
+        "buyer_party_id": int(buyer_party_id_str) if buyer_party_id_str else None,
+        "lines": prefill_lines,
+    }
+    return templates.TemplateResponse(
+        "invoice_form.html",
+        {
+            "request": request,
+            "current_user": current_user,
+            "mode": "edit",
+            "invoice_id": invoice_id,
+            "prefill": prefill,
+            "parties": all_parties,
+            "parties_json": [
+                {"id": p.id, "bank_account": p.bank_account or ""}
+                for p in all_parties
+            ],
+            "error": error_msg,
+        },
+    )
 
 
 @router.get("/ui/invoices/{invoice_id}")

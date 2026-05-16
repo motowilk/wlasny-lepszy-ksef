@@ -133,7 +133,6 @@
                         <th style="width:80px">Ilość</th>
                         <th style="width:105px">Cena netto</th>
                         <th style="width:105px">Stawka VAT</th>
-                        <th style="width:105px">Kurs waluty</th>
                         <th style="width:40px"></th>
                     </tr>
                 </thead>
@@ -197,6 +196,36 @@ function vatSelect(name, selected) {
         }).join('') + '</select>';
 }
 
+var UNIT_OPTIONS = [
+    {v:'szt.', l:'szt.'},
+    {v:'usł.', l:'usł.'},
+    {v:'kg',   l:'kg'},
+    {v:'g',    l:'g'},
+    {v:'t',    l:'t'},
+    {v:'m',    l:'m'},
+    {v:'m2',   l:'m²'},
+    {v:'m3',   l:'m³'},
+    {v:'km',   l:'km'},
+    {v:'l',    l:'l'},
+    {v:'godz.',l:'godz.'},
+    {v:'kpl.', l:'kpl.'},
+    {v:'op.',  l:'op.'},
+    {v:'pak.', l:'pak.'},
+    {v:'mb',   l:'mb'},
+    {v:'ry.',  l:'ry.'},
+];
+
+function unitSelect(name, selected) {
+    var opts = '<option value="">—</option>' +
+        UNIT_OPTIONS.map(function(o) {
+            return '<option value="' + o.v + '"' + (o.v === selected ? ' selected' : '') + '>' + o.l + '</option>';
+        }).join('');
+    if (selected && !UNIT_OPTIONS.find(function(o) { return o.v === selected; })) {
+        opts += '<option value="' + esc(selected) + '" selected>' + esc(selected) + '</option>';
+    }
+    return '<select name="' + name + '" style="width:100%">' + opts + '</select>';
+}
+
 function esc(s) {
     if (s == null) return '';
     return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -208,11 +237,10 @@ function addLine(desc, unit, qty, price, vat, exr) {
     tr.innerHTML =
         '<td style="text-align:center;color:#888">' + n + '</td>' +
         '<td><input type="text" name="line_description_' + n + '" value="' + esc(desc) + '" required style="width:100%;min-width:200px"></td>' +
-        '<td><input type="text" name="line_unit_' + n + '" value="' + esc(unit) + '" style="width:100%"></td>' +
-        '<td><input type="number" step="0.000001" name="line_qty_' + n + '" value="' + esc(qty) + '" required style="width:100%"></td>' +
-        '<td><input type="number" step="0.000001" name="line_price_' + n + '" value="' + esc(price) + '" required style="width:100%"></td>' +
+        '<td>' + unitSelect('line_unit_' + n, unit || 'szt.') + '</td>' +
+        '<td><input type="number" step="0.01" name="line_qty_' + n + '" value="' + esc(qty) + '" required style="width:100%"></td>' +
+        '<td><input type="number" step="0.01" name="line_price_' + n + '" value="' + esc(price) + '" required style="width:100%"></td>' +
         '<td>' + vatSelect('line_vat_' + n, vat || '23') + '</td>' +
-        '<td><input type="number" step="0.0001" name="line_exchange_rate_' + n + '" value="' + esc(exr) + '" placeholder="auto" style="width:100%"></td>' +
         '<td><button type="button" class="btn danger-secondary btn-sm" onclick="removeLine(this)" title="Usuń">✕</button></td>';
     document.getElementById('lines-body').appendChild(tr);
     document.getElementById('line_count').value = document.querySelectorAll('#lines-body tr').length;
@@ -277,7 +305,7 @@ function resolveIbanFields(iban) {
     toggleExchangeRate();
     if (PREFILLED_LINES.length > 0) {
         PREFILLED_LINES.forEach(function(l) {
-            addLine(l.description, l.unit, l.qty, l.price, l.vat_code, l.exchange_rate);
+            addLine(l.description, l.unit, l.qty, l.price, l.vat_code);
         });
     } else {
         addLine();
