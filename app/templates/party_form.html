@@ -53,7 +53,10 @@
         <div class="form-grid form-grid-3">
             <label>
                 NIP (krajowy)
-                <input type="text" name="tax_id" value="{{ v.tax_id if v else '' }}" placeholder="np. 8522713795">
+                <div style="display:flex;gap:.4rem;align-items:center">
+                    <input type="text" name="tax_id" id="nip-input" value="{{ v.tax_id if v else '' }}" placeholder="np. 1234567890">
+                    <button type="button" id="nip-lookup-btn" class="btn secondary" style="white-space:nowrap;padding:.35rem .7rem;font-size:.85rem" title="Pobierz dane z Białej Listy">🔍 GUS</button>
+                </div>
             </label>
             <label>
                 NIP UE / VAT EU
@@ -68,6 +71,7 @@
                 <input type="text" name="krs" value="{{ v.krs if v else '' }}" placeholder="np. 0000123456">
             </label>
         </div>
+        <div id="nip-lookup-msg" style="margin-top:.5rem;font-size:.9rem;display:none"></div>
     </section>
 
     <!-- ═══ ADRES ═══ -->
@@ -119,7 +123,11 @@
             </label>
             <label class="span-3">
                 Nr rachunku bankowego (IBAN)
-                <input type="text" name="bank_account" value="{{ v.bank_account if v else '' }}" placeholder="np. PL03 1020 4870 0000 5002 0098 5796">
+                <div style="display:flex;gap:.4rem;align-items:center">
+                    <input type="text" name="bank_account" id="bank-account-input" value="{{ v.bank_account if v else '' }}" placeholder="np. PL03 1020 4870 0000 5002 0098 5796" style="flex:1">
+                    <button type="button" id="bank-verify-btn" class="btn secondary" style="white-space:nowrap;padding:.35rem .7rem;font-size:.85rem" title="Sprawdź rachunek na Białej Liście">🔍 Weryfikuj</button>
+                </div>
+                <div id="bank-verify-msg" style="margin-top:.3rem;font-size:.85rem;display:none"></div>
             </label>
         </div>
     </section>
@@ -129,4 +137,224 @@
         <a class="btn secondary" href="/ui/parties">Anuluj</a>
     </div>
 </form>
+
+<!-- Bank account selection dialog -->
+<dialog id="bank-dialog" style="border-radius:8px;border:1px solid #ccc;padding:1.5rem;max-width:500px;width:90%">
+    <h3 style="margin-top:0">Wybierz rachunek bankowy</h3>
+    <div id="bank-list" style="display:flex;flex-direction:column;gap:.5rem"></div>
+    <div style="margin-top:1rem;text-align:right">
+        <button type="button" id="bank-cancel" class="btn secondary" style="font-size:.85rem">Anuluj</button>
+    </div>
+</dialog>
+
+<script>
+(function() {
+    var btn = document.getElementById('nip-lookup-btn');
+    var nipInput = document.getElementById('nip-input');
+    var msgEl = document.getElementById('nip-lookup-msg');
+    var dialog = document.getElementById('bank-dialog');
+
+    function showMsg(text, isError) {
+        msgEl.style.display = 'block';
+        msgEl.style.color = isError ? '#c0392b' : '#27ae60';
+        msgEl.textContent = text;
+        setTimeout(function() { msgEl.style.display = 'none'; }, 6000);
+    }
+
+    function setField(name, value) {
+        var el = document.querySelector('input[name="' + name + '"]');
+        if (el && value) el.value = value;
+    }
+
+    function generateShortName(fullName) {
+        if (!fullName) return '';
+        // Remove common legal suffixes
+        var stripped = fullName
+            .replace(/SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ/gi, '')
+            .replace(/SPÓŁKA AKCYJNA/gi, '')
+            .replace(/SPÓŁKA KOMANDYTOWA/gi, '')
+            .replace(/SPÓŁKA JAWNA/gi, '')
+            .replace(/SPÓŁKA PARTNERSKA/gi, '')
+            .replace(/SPÓŁKA CYWILNA/gi, '')
+            .replace(/SP\.\s*Z\s*O\.?\s*O\.?/gi, '')
+            .replace(/S\.?\s*A\.?$/gi, '')
+            .replace(/S\.?\s*C\.?$/gi, '')
+            .replace(/S\.?\s*K\.?$/gi, '')
+            .replace(/S\.?\s*J\.?$/gi, '')
+            .trim().replace(/\s+/g, ' ');
+        // Title case
+        return stripped.split(' ').map(function(w) {
+            return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        }).join(' ');
+    }
+
+    function getCountryCode() {
+        var el = document.querySelector('input[name="country_code"]');
+        return (el && el.value.trim()) ? el.value.trim().toUpperCase() : 'PL';
+    }
+
+    function buildIban(account) {
+        if (!account) return '';
+        var digits = account.replace(/\D/g, '');
+        return getCountryCode() + digits;
+    }
+
+    function highlightEmptyFields() {
+        var fields = ['name_full','name_short','tax_id','regon','krs','street','building_no','postal_code','city','bank_account','email','phone'];
+        fields.forEach(function(name) {
+            var el = document.querySelector('input[name="' + name + '"]');
+            if (el) {
+                if (!el.value.trim()) {
+                    el.style.backgroundColor = '#fff0f0';
+                } else {
+                    el.style.backgroundColor = '';
+                }
+            }
+        });
+    }
+
+    // Clear red highlight on input
+    document.querySelectorAll('input').forEach(function(el) {
+        el.addEventListener('input', function() {
+            if (el.value.trim()) {
+                el.style.backgroundColor = '';
+            }
+        });
+    });
+
+    btn.addEventListener('click', function() {
+        var nip = nipInput.value.replace(/\D/g, '');
+        if (nip.length !== 10) {
+            showMsg('NIP musi mieć dokładnie 10 cyfr.', true);
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = '⏳';
+        msgEl.style.display = 'none';
+
+        fetch('/ui/parties/lookup-nip?nip=' + nip)
+            .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+            .then(function(res) {
+                btn.disabled = false;
+                btn.textContent = '🔍 GUS';
+
+                if (!res.ok) {
+                    showMsg(res.data.error || 'Błąd zapytania.', true);
+                    return;
+                }
+
+                var d = res.data;
+
+                // Fill fields (overwrite)
+                setField('name_full', d.name_full);
+                setField('name_short', generateShortName(d.name_full));
+                setField('regon', d.regon);
+                setField('krs', d.krs);
+                setField('street', d.street);
+                setField('building_no', d.building_no);
+                setField('apartment_no', d.apartment_no);
+                setField('postal_code', d.postal_code);
+                setField('city', d.city);
+
+                // Set party type to COMPANY
+                var ptSelect = document.querySelector('select[name="party_type"]');
+                if (ptSelect) ptSelect.value = 'COMPANY';
+
+                // Bank accounts
+                var accounts = d.account_numbers || [];
+                if (accounts.length === 1) {
+                    setField('bank_account', buildIban(accounts[0]));
+                } else if (accounts.length > 1) {
+                    // Show dialog to choose
+                    var listEl = document.getElementById('bank-list');
+                    listEl.innerHTML = '';
+                    accounts.forEach(function(acc) {
+                        var b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'btn secondary';
+                        b.style.fontSize = '.85rem';
+                        b.style.fontFamily = 'monospace';
+                        var ibanDisplay = buildIban(acc);
+                        b.textContent = ibanDisplay.replace(/(.{4})/g, '$1 ').trim();
+                        b.addEventListener('click', function() {
+                            setField('bank_account', buildIban(acc));
+                            dialog.close();
+                        });
+                        listEl.appendChild(b);
+                    });
+                    dialog.showModal();
+                }
+
+                showMsg('Dane pobrane z Białej Listy (VAT: ' + d.status_vat + ')', false);
+
+                // Highlight fields still empty
+                highlightEmptyFields();
+            })
+            .catch(function() {
+                btn.disabled = false;
+                btn.textContent = '🔍 GUS';
+                showMsg('Błąd połączenia z serwerem.', true);
+            });
+    });
+
+    document.getElementById('bank-cancel').addEventListener('click', function() {
+        dialog.close();
+    });
+
+    // ── Bank account verification ──
+    var bankBtn = document.getElementById('bank-verify-btn');
+    var bankInput = document.getElementById('bank-account-input');
+    var bankMsg = document.getElementById('bank-verify-msg');
+
+    function showBankMsg(text, isError) {
+        bankMsg.style.display = 'block';
+        bankMsg.style.color = isError ? '#c0392b' : '#27ae60';
+        bankMsg.innerHTML = text;
+        setTimeout(function() { bankMsg.style.display = 'none'; }, 8000);
+    }
+
+    bankBtn.addEventListener('click', function() {
+        var acc = bankInput.value.replace(/\D/g, '');
+        if (acc.length !== 26) {
+            showBankMsg('Numer rachunku musi mieć 26 cyfr.', true);
+            return;
+        }
+
+        bankBtn.disabled = true;
+        bankBtn.textContent = '⏳';
+        bankMsg.style.display = 'none';
+
+        fetch('/ui/parties/verify-bank-account?account=' + acc)
+            .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+            .then(function(res) {
+                bankBtn.disabled = false;
+                bankBtn.textContent = '🔍 Weryfikuj';
+
+                if (!res.ok) {
+                    showBankMsg(res.data.error || 'Błąd zapytania.', true);
+                    return;
+                }
+
+                var d = res.data;
+                if (d.verified) {
+                    var ownerInfo = '';
+                    if (d.owners && d.owners.length) {
+                        ownerInfo = ' — ' + d.owners.map(function(o) {
+                            return o.name + ' (NIP: ' + o.nip + ', VAT: ' + o.status_vat + ')';
+                        }).join('; ');
+                    }
+                    showBankMsg('✓ ' + d.message + ownerInfo, false);
+                } else {
+                    showBankMsg('✗ ' + d.message, true);
+                }
+            })
+            .catch(function() {
+                bankBtn.disabled = false;
+                bankBtn.textContent = '🔍 Weryfikuj';
+                showBankMsg('Błąd połączenia z serwerem.', true);
+            });
+    });
+})();
+</script>
 {% endblock %}

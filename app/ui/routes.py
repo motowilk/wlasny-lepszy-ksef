@@ -1,7 +1,8 @@
 import io
+import re
 import secrets
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -1252,6 +1253,141 @@ def parties_list(
         "parties_list.html",
         {"request": request, "current_user": current_user, "parties": parties, "success": success},
     )
+
+
+# ── NIP lookup via Biała Lista ──────────────────────────────────────────────
+@router.get("/ui/parties/lookup-nip")
+async def party_lookup_nip(
+    nip: str,
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent")),
+):
+    import httpx
+    from fastapi.responses import JSONResponse
+
+    nip_clean = re.sub(r"\D", "", nip)
+    if len(nip_clean) != 10:
+        return JSONResponse({"error": "NIP musi mieć 10 cyfr."}, status_code=422)
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    url = f"https://wl-api.mf.gov.pl/api/search/nip/{nip_clean}?date={yesterday}"
+
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(url)
+    except httpx.TimeoutException:
+        return JSONResponse({"error": "Timeout — serwer MF nie odpowiada."}, status_code=504)
+
+    if resp.status_code != 200:
+        return JSONResponse({"error": "Nie znaleziono podmiotu o podanym NIP."}, status_code=404)
+
+    data = resp.json()
+    subject = data.get("result", {}).get("subject")
+    if not subject:
+        return JSONResponse({"error": "Brak danych podmiotu w odpowiedzi."}, status_code=404)
+
+    # Check VAT status first
+    status_vat = subject.get("statusVat") or ""
+    if status_vat != "Czynny":
+        return JSONResponse({
+            "error": f"Podmiot NIE jest czynnym podatnikiem VAT (status: {status_vat or 'brak'}).",
+            "status_vat": status_vat,
+        }, status_code=422)
+
+    # Parse address
+    address_raw = subject.get("workingAddress") or subject.get("residenceAddress") or ""
+    street = ""
+    building_no = ""
+    apartment_no = ""
+    postal_code = ""
+    city = ""
+
+    if address_raw and "," in address_raw:
+        parts = address_raw.split(",", 1)
+        street_part = parts[0].strip()
+        postal_city = parts[1].strip()
+
+        # Last token with a digit is the building number
+        tokens = street_part.rsplit(" ", 1)
+        if len(tokens) == 2 and re.search(r"\d", tokens[1]):
+            street = tokens[0]
+            number_raw = tokens[1]
+            if "/" in number_raw:
+                building_no, apartment_no = number_raw.split("/", 1)
+            else:
+                building_no = number_raw
+        else:
+            street = street_part
+
+        pc_match = re.match(r"(\d{2}-\d{3})\s+(.*)", postal_city)
+        if pc_match:
+            postal_code = pc_match.group(1)
+            city = pc_match.group(2)
+
+    # Bank accounts
+    account_numbers = subject.get("accountNumbers") or []
+
+    return JSONResponse({
+        "name_full": subject.get("name") or "",
+        "regon": subject.get("regon") or "",
+        "krs": subject.get("krs") or "",
+        "street": street,
+        "building_no": building_no,
+        "apartment_no": apartment_no,
+        "postal_code": postal_code,
+        "city": city,
+        "account_numbers": account_numbers,
+        "status_vat": status_vat,
+    })
+
+
+# ── Bank account verification via Biała Lista ────────────────────────────────
+@router.get("/ui/parties/verify-bank-account")
+async def party_verify_bank_account(
+    account: str,
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent")),
+):
+    import httpx
+    from fastapi.responses import JSONResponse
+
+    account_clean = re.sub(r"\D", "", account)
+    if len(account_clean) != 26:
+        return JSONResponse({"error": "Numer rachunku musi mieć 26 cyfr."}, status_code=422)
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    url = f"https://wl-api.mf.gov.pl/api/search/bank-account/{account_clean}?date={yesterday}"
+
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.get(url)
+    except httpx.TimeoutException:
+        return JSONResponse({"error": "Timeout — serwer MF nie odpowiada."}, status_code=504)
+
+    if resp.status_code != 200:
+        return JSONResponse({"error": "Nie znaleziono rachunku w rejestrze."}, status_code=404)
+
+    data = resp.json()
+    subjects = data.get("result", {}).get("subjects") or []
+
+    if not subjects:
+        return JSONResponse({
+            "verified": False,
+            "message": "Rachunek NIE figuruje na Białej Liście.",
+        })
+
+    # Return info about who owns this account
+    owners = []
+    for s in subjects:
+        owners.append({
+            "name": s.get("name") or "",
+            "nip": s.get("nip") or "",
+            "status_vat": s.get("statusVat") or "",
+        })
+
+    return JSONResponse({
+        "verified": True,
+        "message": "Rachunek figuruje na Białej Liście.",
+        "owners": owners,
+    })
 
 
 @router.get("/ui/parties/new")
