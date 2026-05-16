@@ -59,6 +59,13 @@ class ValidationService:
         if not invoice.lines:
             errors.append("Faktura nie ma pozycji.")
 
+        if invoice.payment_account and invoice.payment_account.strip():
+            acct = invoice.payment_account.strip()
+            if len(acct) < 10 or len(acct) > 34:
+                errors.append(
+                    f"Nr rachunku bankowego (IBAN) musi mieć od 10 do 34 znaków (podano {len(acct)})."
+                )
+
         if invoice.direction_code == "SALE":
             buyer_exists = any(p.role_code == "BUYER" for p in invoice.parties)
             seller_link = next((p for p in invoice.parties if p.role_code == "SELLER"), None)

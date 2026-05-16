@@ -107,7 +107,7 @@
             </label>
             <label class="span-2">
                 Nr rachunku bankowego (IBAN)
-                <input type="text" name="payment_account" id="payment_account" value="{{ prefill.get('payment_account', '') }}" placeholder="PL1234567890123456789">
+                <input type="text" name="payment_account" id="payment_account" value="{{ prefill.get('payment_account', '') }}" placeholder="PL1234567890123456789" minlength="10" maxlength="34" pattern=".{10,34}" title="Nr rachunku (IBAN) musi mieć od 10 do 34 znaków">
             </label>
             <label>
                 Kod SWIFT / BIC

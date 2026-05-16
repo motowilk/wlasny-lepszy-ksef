@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PartyPayload(BaseModel):
@@ -78,6 +78,17 @@ class InvoiceCreateRequest(BaseModel):
     source_system: str | None = None
     source_channel: str | None = None
     business_tags: dict[str, Any] | None = None
+
+    @field_validator("payment_account")
+    @classmethod
+    def validate_payment_account(cls, v: str | None) -> str | None:
+        if v is not None and v.strip():
+            v = v.strip()
+            if len(v) < 10 or len(v) > 34:
+                raise ValueError(
+                    "Nr rachunku bankowego (IBAN) musi mieć od 10 do 34 znaków."
+                )
+        return v
     fa_metadata: dict[str, Any] | None = None
     workflow_data: dict[str, Any] | None = None
     extra_data: dict[str, Any] | None = None
@@ -98,6 +109,17 @@ class InvoiceUpdateRequest(BaseModel):
     payment_account: str | None = None
     purchase_category: str | None = None
     business_tags: dict[str, Any] | None = None
+
+    @field_validator("payment_account")
+    @classmethod
+    def validate_payment_account(cls, v: str | None) -> str | None:
+        if v is not None and v.strip():
+            v = v.strip()
+            if len(v) < 10 or len(v) > 34:
+                raise ValueError(
+                    "Nr rachunku bankowego (IBAN) musi mieć od 10 do 34 znaków."
+                )
+        return v
     fa_metadata: dict[str, Any] | None = None
     workflow_data: dict[str, Any] | None = None
     extra_data: dict[str, Any] | None = None
