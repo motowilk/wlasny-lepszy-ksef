@@ -30,3 +30,5 @@ class WorkerHeartbeat(Base):
     phase: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # JSON array of current job statuses for the toast UI
     current_jobs_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Timestamp of the last completed scheduler tick (process_all_jobs)
+    last_tick_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -175,8 +175,14 @@
         } else {
             // ─── GREEN IDLE: countdown to next run ─────────────────────
             toastClass = 'ws-toast ws-toast-idle';
-            var elapsed = data.seconds_since_heartbeat || 0;
-            var remaining = Math.max(0, _schedulerInterval - (elapsed % _schedulerInterval));
+            var elapsed = data.seconds_since_last_tick;
+            var remaining;
+            if (elapsed != null) {
+                remaining = Math.max(0, _schedulerInterval - elapsed);
+            } else {
+                // No tick recorded yet — show full interval
+                remaining = _schedulerInterval;
+            }
             if (remaining === 0) remaining = _schedulerInterval;
 
             html =
@@ -185,7 +191,7 @@
                     '<button class="ws-toast-x" title="Zamknij">&#x2715;</button>' +
                 '</div>' +
                 '<div class="ws-toast-body">' +
-                    '<div class="ws-toast-countdown" id="ws-countdown">Następne sprawdzenie za ' + remaining + 's</div>' +
+                    '<div class="ws-toast-countdown" id="ws-countdown">Następne sprawdzenie za ' + wsFormatDuration(remaining) + '</div>' +
                     '<div class="ws-toast-queue">📥 Kolejka: <strong>' + (queue.new || 0) + '</strong> oczekujące · <strong>' + (queue.processing || 0) + '</strong> w toku</div>' +
                 '</div>' +
                 '<div class="ws-toast-bar"><div class="ws-toast-fill ws-fill-idle"></div></div>';
@@ -200,7 +206,7 @@
                     wsStopAllTimers();
                     _lastPhase = null; // allow next poll to re-render
                 } else {
-                    el.textContent = 'Następne sprawdzenie za ' + remaining + 's';
+                    el.textContent = 'Następne sprawdzenie za ' + wsFormatDuration(remaining);
                 }
             }, 1000);
         }
@@ -222,11 +228,13 @@
     }
 
     function wsFormatDuration(sec) {
-        if (sec < 60) return sec + 's';
-        var m = Math.floor(sec / 60);
+        var h = Math.floor(sec / 3600);
+        var m = Math.floor((sec % 3600) / 60);
         var s = sec % 60;
-        if (m < 60) return m + 'min ' + s + 's';
-        return Math.floor(m / 60) + 'h ' + (m % 60) + 'min';
+        var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+        if (h > 0) return pad(h) + ':' + pad(m) + ':' + pad(s);
+        if (m > 0) return pad(m) + ':' + pad(s);
+        return '' + s + 's';
     }
 
     function wsRefresh() {

@@ -161,6 +161,7 @@ def ui_worker_status(
 
     is_running = False
     seconds_since_heartbeat = None
+    seconds_since_last_tick = None
     hb_status = None
     hb_job_type = None
     hb_job_id = None
@@ -173,6 +174,13 @@ def ui_worker_status(
         hb_status = scheduler_hb.status
         hb_job_type = scheduler_hb.current_job_type
         hb_job_id = scheduler_hb.current_job_id
+
+        # Compute seconds since the last completed tick
+        if scheduler_hb.last_tick_at:
+            tick_time = scheduler_hb.last_tick_at
+            if tick_time.tzinfo is None:
+                tick_time = tick_time.replace(tzinfo=timezone.utc)
+            seconds_since_last_tick = max(0, int((now - tick_time).total_seconds()))
 
     # Determine phase from DB heartbeat + in-memory state (if same process)
     # Priority: DB heartbeat is the source of truth for running/not-running.
@@ -199,6 +207,7 @@ def ui_worker_status(
         {
             "running": is_running,
             "seconds_since_heartbeat": seconds_since_heartbeat,
+            "seconds_since_last_tick": seconds_since_last_tick,
             "phase": phase,
             "current_jobs": current_jobs,
             "queue": {"new": new_count, "processing": processing_count},

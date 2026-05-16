@@ -92,6 +92,7 @@ class Scheduler:
         job_id: int | None = None,
         phase: str | None = None,
         current_jobs: list | None = None,
+        mark_tick: bool = False,
     ) -> None:
         db = SessionLocal()
         try:
@@ -109,6 +110,8 @@ class Scheduler:
                     heartbeat.phase = phase
                 if jobs_json is not None:
                     heartbeat.current_jobs_json = jobs_json
+                if mark_tick:
+                    heartbeat.last_tick_at = now
             else:
                 db.execute(
                     delete(WorkerHeartbeat).where(
@@ -124,6 +127,7 @@ class Scheduler:
                         current_job_id=job_id,
                         phase=phase or "idle",
                         current_jobs_json=jobs_json,
+                        last_tick_at=now if mark_tick else None,
                     )
                 )
             db.commit()
@@ -368,6 +372,7 @@ class Scheduler:
                 "IDLE",
                 phase="cooldown",
                 current_jobs=scheduler_state["current_jobs"],
+                mark_tick=True,
             )
 
         finally:
