@@ -361,6 +361,36 @@ Drugi kluczowy scenariusz — import i kwalifikacja faktur zakupowych:
 6. Zakwalifikowane faktury trafiają do batcha miesięcznego i są wysyłane do biura księgowego.
 
 
+### 15. Generowanie PDF faktury (wizualizacja KSeF)
+
+Każda faktura w systemie może zostać pobrana jako plik PDF odzwierciedlający strukturę schematu FA(3) v1-0E oraz wizualny format stosowany przez oficjalny portal KSeF.
+
+**Endpoint:** `GET /ui/invoices/{id}/pdf`
+
+**Zawartość PDF:**
+- Nagłówek "Krajowy System e-Faktur" z rodzajem faktury (RodzajFaktury)
+- Metadane: numer faktury (P_2), numer KSeF, data wystawienia (P_1), data sprzedaży (P_6), waluta (KodWaluty), kurs
+- Bloki Podmiot1 (Sprzedawca) i Podmiot2 (Nabywca) z NIP, nazwą, adresem (TAdres: AdresL1, AdresL2)
+- Tabela pozycji (FaWiersz): NrWierszaFa, P_7 (nazwa), P_8A (j.m.), P_8B (ilość), P_9A (cena netto), P_10 (rabat), P_11 (wartość netto), P_12 (stawka), P_11Vat (kwota VAT)
+- Podsumowanie stawek VAT (P_13_x / P_14_x) z sumą brutto (P_15)
+- Sekcja Płatność (Platnosc): FormaPlatnosci, TerminPlatnosci, RachunekBankowy/NrRB
+- Kod QR do weryfikacji faktury w KSeF (KOD I — faktury online)
+- Stopka z informacją o schemacie
+
+**Kod QR (specyfikacja KOD I):**
+
+URL kodowany w QR ma format:
+```
+https://qr.ksef.mf.gov.pl/invoice/{NIP_sprzedawcy}/{DD-MM-RRRR}/{SHA256_Base64URL}
+```
+Gdzie SHA256 to Base64URL-encoded hash XML faktury (pole `xml_sha256` z bazy w formacie hex → bytes → base64url bez paddingu).
+
+**Zależności:**
+- `weasyprint` — konwersja HTML → PDF
+- `qrcode` — generowanie obrazu QR
+- System: `pango`, `glib` (instalowane przez menedżer pakietów systemowych)
+
+
 ## Instalacja i konfiguracja
 ## Założenia
 
@@ -401,7 +431,31 @@ source .venv/bin/activate
 
 Ten krok instaluje wszystkie biblioteki wymagane przez aplikację, między innymi FastAPI, SQLAlchemy, Uvicorn, APScheduler i sterownik MySQL. Bez tego aplikacja i skrypty inicjalizacyjne nie uruchomią się poprawnie.
 
-Windows i macOS:
+### macOS — wymagane biblioteki systemowe
+
+WeasyPrint (generowanie PDF) wymaga bibliotek Pango i GLib. Zainstaluj je przez Homebrew **przed** `pip install`:
+
+```bash
+brew install pango glib
+```
+
+Jeśli używasz Pythona zainstalowanego poza Homebrew (np. z python.org), ustaw zmienną środowiskową, aby Python mógł znaleźć biblioteki:
+
+```bash
+export DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib:$DYLD_FALLBACK_LIBRARY_PATH"
+```
+
+Możesz dodać tę linię do `~/.zshrc` lub skryptu startowego aplikacji.
+
+### Linux (Debian/Ubuntu)
+
+```bash
+sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libgdk-pixbuf2.0-0
+```
+
+### Instalacja pakietów Python
+
+Windows, macOS i Linux:
 
 ```bash
 python3 -m pip install --upgrade pip

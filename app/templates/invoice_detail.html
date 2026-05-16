@@ -10,6 +10,7 @@
         <a class="btn secondary" href="/ui/invoices">Powrót</a>
         <a class="btn" href="/ui/invoices/new?clone={{ invoice.id }}" class="ml-6">Powtórz fakturę</a>
         {% endif %}
+        <a class="btn secondary ml-6" href="/ui/invoices/{{ invoice.id }}/pdf">Pobierz PDF</a>
 
         {% if invoice.direction_code == 'SALE' and not invoice.approved_at %}
         <a class="btn secondary ml-6" href="/ui/invoices/{{ invoice.id }}/edit">Edytuj</a>

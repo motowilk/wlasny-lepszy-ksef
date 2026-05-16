@@ -1020,6 +1020,42 @@ def invoice_detail(
     )
 
 
+@router.get("/ui/invoices/{invoice_id}/pdf")
+def invoice_pdf(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(get_current_ui_user),
+):
+    from fastapi.responses import Response
+    from app.services.pdf_service import generate_invoice_pdf
+
+    invoice = (
+        db.execute(
+            select(Invoice)
+            .options(
+                joinedload(Invoice.lines),
+                joinedload(Invoice.parties).joinedload(InvoiceParty.party),
+                joinedload(Invoice.vat_summaries),
+            )
+            .where(Invoice.id == invoice_id)
+        )
+        .unique()
+        .scalar_one_or_none()
+    )
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Faktura nie istnieje.")
+
+    pdf_bytes = generate_invoice_pdf(invoice)
+    filename = f"faktura_{invoice.invoice_number.replace('/', '_')}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/ui/invoices/{invoice_id}/qualify")
 def invoice_qualify(
     invoice_id: int,

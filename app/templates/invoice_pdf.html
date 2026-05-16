@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');
+
+@page {
+    size: A4;
+    margin: 15mm 15mm 20mm 15mm;
+    @bottom-right {
+        content: counter(page) " z " counter(pages);
+        font-family: 'Roboto', sans-serif;
+        font-size: 8pt;
+        color: #555;
+    }
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    font-size: 9pt;
+    color: #1a1a1a;
+    line-height: 1.4;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 12pt;
+    padding-bottom: 8pt;
+    border-bottom: 2px solid #1a3a6b;
+}
+
+.header h1 {
+    font-size: 14pt;
+    font-weight: 500;
+    color: #1a3a6b;
+    margin-bottom: 2pt;
+}
+
+.header .subtitle {
+    font-size: 10pt;
+    color: #333;
+}
+
+.invoice-meta {
+    margin-bottom: 12pt;
+}
+
+.invoice-meta table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.invoice-meta td {
+    padding: 3pt 6pt;
+    vertical-align: top;
+}
+
+.invoice-meta .label {
+    font-weight: 500;
+    color: #333;
+    width: 35%;
+}
+
+.invoice-meta .value {
+    color: #1a1a1a;
+}
+
+/* Podmioty - Seller/Buyer */
+.parties {
+    display: flex;
+    gap: 12pt;
+    margin-bottom: 14pt;
+}
+
+.party-box {
+    flex: 1;
+    border: 1px solid #ccd;
+    padding: 8pt;
+    border-radius: 2pt;
+}
+
+.party-box h3 {
+    font-size: 9pt;
+    font-weight: 500;
+    color: #fff;
+    background: #4a6fa5;
+    margin: -8pt -8pt 6pt -8pt;
+    padding: 4pt 8pt;
+    border-radius: 2pt 2pt 0 0;
+}
+
+.party-box .party-name {
+    font-weight: 500;
+    font-size: 9.5pt;
+    margin-bottom: 2pt;
+}
+
+.party-box .party-detail {
+    font-size: 8.5pt;
+    color: #333;
+}
+
+/* FA section - line items table */
+.section-title {
+    font-size: 9.5pt;
+    font-weight: 500;
+    color: #1a3a6b;
+    margin: 10pt 0 4pt 0;
+    border-bottom: 1px solid #dde;
+    padding-bottom: 2pt;
+}
+
+.lines-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10pt;
+    font-size: 8pt;
+}
+
+.lines-table th {
+    background: #e8eef7;
+    color: #1a3a6b;
+    font-weight: 500;
+    padding: 4pt 4pt;
+    border: 1px solid #ccd;
+    text-align: center;
+}
+
+.lines-table td {
+    padding: 3pt 4pt;
+    border: 1px solid #dde;
+    vertical-align: top;
+}
+
+.lines-table .num {
+    text-align: center;
+}
+
+.lines-table .amount {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.lines-table .name {
+    text-align: left;
+}
+
+.lines-table tfoot td {
+    font-weight: 500;
+    background: #f5f7fa;
+}
+
+/* VAT summary table */
+.vat-table {
+    width: 60%;
+    border-collapse: collapse;
+    margin-bottom: 10pt;
+    font-size: 8pt;
+}
+
+.vat-table th {
+    background: #e8eef7;
+    color: #1a3a6b;
+    font-weight: 500;
+    padding: 4pt 6pt;
+    border: 1px solid #ccd;
+    text-align: center;
+}
+
+.vat-table td {
+    padding: 3pt 6pt;
+    border: 1px solid #dde;
+    text-align: right;
+}
+
+.vat-table tfoot td {
+    font-weight: 500;
+    background: #f5f7fa;
+}
+
+/* Payment section */
+.payment-section {
+    margin-top: 8pt;
+    padding: 6pt 8pt;
+    border: 1px solid #ccd;
+    border-radius: 2pt;
+}
+
+.payment-section .row {
+    display: flex;
+    margin-bottom: 2pt;
+}
+
+.payment-section .row .label {
+    font-weight: 500;
+    width: 180pt;
+    color: #333;
+}
+
+/* QR Code section */
+.qr-section {
+    margin-top: 20pt;
+    text-align: center;
+    page-break-inside: avoid;
+}
+
+.qr-section .qr-title {
+    font-size: 9pt;
+    font-weight: 500;
+    color: #1a3a6b;
+    margin-bottom: 6pt;
+}
+
+.qr-section img {
+    width: 100pt;
+    height: 100pt;
+}
+
+.qr-section .ksef-label {
+    font-size: 8pt;
+    margin-top: 4pt;
+    color: #333;
+}
+
+.qr-section .verify-url {
+    font-size: 7pt;
+    color: #555;
+    margin-top: 4pt;
+    word-break: break-all;
+}
+
+/* Footer */
+.footer {
+    margin-top: 16pt;
+    padding-top: 6pt;
+    border-top: 1px solid #dde;
+    font-size: 7.5pt;
+    color: #777;
+    text-align: center;
+}
+</style>
+</head>
+<body>
+
+<!-- Naglowek -->
+<div class="header">
+    <h1>Krajowy System e-Faktur</h1>
+    <div class="subtitle">{{ invoice_kind_label }}</div>
+</div>
+
+<!-- FA metadata: P_2 (numer), KSeF, P_1 (data wystawienia), P_6 (data sprzedaży), KodWaluty -->
+<div class="invoice-meta">
+    <table>
+        <tr>
+            <td class="label">Numer Faktury (P_2):</td>
+            <td class="value"><strong>{{ invoice.invoice_number }}</strong></td>
+            <td class="label">Numer KSeF:</td>
+            <td class="value">{{ ksef_number or "—" }}</td>
+        </tr>
+        <tr>
+            <td class="label">Data wystawienia (P_1):</td>
+            <td class="value">{{ invoice.issue_date }}</td>
+            <td class="label">Data sprzedaży (P_6):</td>
+            <td class="value">{{ invoice.sale_date or "—" }}</td>
+        </tr>
+        <tr>
+            <td class="label">Waluta (KodWaluty):</td>
+            <td class="value">{{ invoice.currency_code }}</td>
+            <td class="label">Kurs waluty:</td>
+            <td class="value">{{ invoice.exchange_rate or "—" }}</td>
+        </tr>
+        {% if invoice.is_correction %}
+        <tr>
+            <td class="label">Faktura korygowana:</td>
+            <td class="value">{{ invoice.corrected_invoice_number or "—" }}</td>
+            <td class="label">Przyczyna korekty:</td>
+            <td class="value">{{ invoice.correction_reason or "—" }}</td>
+        </tr>
+        {% endif %}
+    </table>
+</div>
+
+<!-- Podmiot1 (Sprzedawca) / Podmiot2 (Nabywca) -->
+<div class="parties">
+    <div class="party-box">
+        <h3>Podmiot1 – Sprzedawca</h3>
+        {% if seller %}
+        <div class="party-name">{{ seller.name_full }}</div>
+        <div class="party-detail">NIP: {{ seller.tax_id or "—" }}</div>
+        {% if seller.vat_eu_id %}
+        <div class="party-detail">VAT UE: {{ seller.vat_eu_id }}</div>
+        {% endif %}
+        <div class="party-detail">{{ seller_address_l1 }}</div>
+        <div class="party-detail">{{ seller_address_l2 }}</div>
+        {% if seller.email %}
+        <div class="party-detail">Email: {{ seller.email }}</div>
+        {% endif %}
+        {% if seller.phone %}
+        <div class="party-detail">Tel: {{ seller.phone }}</div>
+        {% endif %}
+        {% else %}
+        <div class="party-detail">Brak danych</div>
+        {% endif %}
+    </div>
+    <div class="party-box">
+        <h3>Podmiot2 – Nabywca</h3>
+        {% if buyer %}
+        <div class="party-name">{{ buyer.name_full }}</div>
+        <div class="party-detail">NIP: {{ buyer.tax_id or "—" }}</div>
+        {% if buyer.vat_eu_id %}
+        <div class="party-detail">VAT UE: {{ buyer.vat_eu_id }}</div>
+        {% endif %}
+        <div class="party-detail">{{ buyer_address_l1 }}</div>
+        <div class="party-detail">{{ buyer_address_l2 }}</div>
+        {% if buyer.email %}
+        <div class="party-detail">Email: {{ buyer.email }}</div>
+        {% endif %}
+        {% if buyer.phone %}
+        <div class="party-detail">Tel: {{ buyer.phone }}</div>
+        {% endif %}
+        {% else %}
+        <div class="party-detail">Brak danych</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- FaWiersz - pozycje faktury -->
+<div class="section-title">Pozycje faktury (FaWiersz)</div>
+<table class="lines-table">
+    <thead>
+        <tr>
+            <th style="width:5%">Lp<br><small>(NrWierszaFa)</small></th>
+            <th style="width:30%">Nazwa towaru/usługi<br><small>(P_7)</small></th>
+            <th style="width:7%">J.m.<br><small>(P_8A)</small></th>
+            <th style="width:8%">Ilość<br><small>(P_8B)</small></th>
+            <th style="width:11%">Cena j. netto<br><small>(P_9A)</small></th>
+            <th style="width:8%">Rabat<br><small>(P_10)</small></th>
+            <th style="width:11%">Wartość netto<br><small>(P_11)</small></th>
+            <th style="width:7%">Stawka<br><small>(P_12)</small></th>
+            <th style="width:11%">Kwota VAT<br><small>(P_11Vat)</small></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for line in lines %}
+        <tr>
+            <td class="num">{{ line.line_no }}</td>
+            <td class="name">{{ line.product_name }}{% if line.pkwiu_code %} <small>(PKWiU: {{ line.pkwiu_code }})</small>{% endif %}</td>
+            <td class="num">{{ line.unit_code or "—" }}</td>
+            <td class="amount">{{ "%.6g"|format(line.quantity) }}</td>
+            <td class="amount">{{ "%.2f"|format(line.unit_price_net) }}</td>
+            <td class="amount">{% if line.discount_amount %}{{ "%.2f"|format(line.discount_amount) }}{% else %}—{% endif %}</td>
+            <td class="amount">{{ "%.2f"|format(line.net_amount) }}</td>
+            <td class="num">{% if line.vat_rate is not none %}{{ "%.0f"|format(line.vat_rate) }}%{% elif line.vat_code %}{{ line.vat_code }}{% else %}—{% endif %}</td>
+            <td class="amount">{{ "%.2f"|format(line.vat_amount) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr>
+            <td colspan="6" style="text-align:right">Razem:</td>
+            <td class="amount">{{ "%.2f"|format(invoice.net_total) }}</td>
+            <td></td>
+            <td class="amount">{{ "%.2f"|format(invoice.vat_total) }}</td>
+        </tr>
+    </tfoot>
+</table>
+
+<!-- Podsumowanie VAT (P_13_x / P_14_x) -->
+<div class="section-title">Podsumowanie stawek VAT</div>
+<table class="vat-table">
+    <thead>
+        <tr>
+            <th>Stawka</th>
+            <th>Netto (P_13)</th>
+            <th>VAT (P_14)</th>
+            <th>Brutto</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for vs in vat_summaries %}
+        <tr>
+            <td style="text-align:center">{% if vs.vat_rate is not none %}{{ "%.0f"|format(vs.vat_rate) }}%{% else %}{{ vs.vat_code }}{% endif %}</td>
+            <td>{{ "%.2f"|format(vs.net_amount) }}</td>
+            <td>{{ "%.2f"|format(vs.vat_amount) }}</td>
+            <td>{{ "%.2f"|format(vs.gross_amount) }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr>
+            <td style="text-align:center"><strong>SUMA</strong></td>
+            <td>{{ "%.2f"|format(invoice.net_total) }}</td>
+            <td>{{ "%.2f"|format(invoice.vat_total) }}</td>
+            <td>{{ "%.2f"|format(invoice.gross_total) }}</td>
+        </tr>
+    </tfoot>
+</table>
+
+<!-- Kwota należności ogółem (P_15) -->
+<p style="margin: 6pt 0; font-weight: 500;">
+    Kwota należności ogółem (P_15): <strong>{{ "%.2f"|format(invoice.gross_total) }} {{ invoice.currency_code }}</strong>
+</p>
+
+<!-- Platnosc -->
+<div class="section-title">Płatność (Platnosc)</div>
+<div class="payment-section">
+    <div class="row">
+        <span class="label">Forma płatności (FormaPlatnosci):</span>
+        <span>{{ invoice.payment_method or "—" }}</span>
+    </div>
+    <div class="row">
+        <span class="label">Termin płatności (TerminPlatnosci):</span>
+        <span>{{ invoice.due_date or "—" }}</span>
+    </div>
+    {% if invoice.payment_account %}
+    <div class="row">
+        <span class="label">Nr rachunku (RachunekBankowy/NrRB):</span>
+        <span>{{ invoice.payment_account }}</span>
+    </div>
+    {% endif %}
+    {% if seller and seller.bank_account and seller.bank_account != invoice.payment_account %}
+    <div class="row">
+        <span class="label">Rachunek sprzedawcy:</span>
+        <span>{{ seller.bank_account }}</span>
+    </div>
+    {% endif %}
+    {% if invoice.is_paid %}
+    <div class="row">
+        <span class="label">Status:</span>
+        <span>Zapłacono</span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- QR Code section -->
+{% if qr_base64 %}
+<div class="qr-section">
+    <div class="qr-title">Sprawdź czy Twoja Faktura znajduje się w KSeF</div>
+    <img src="data:image/png;base64,{{ qr_base64 }}" alt="QR KSeF">
+    <div class="ksef-label">{{ ksef_number or "OFFLINE" }}</div>
+    {% if qr_url %}
+    <div class="verify-url">{{ qr_url }}</div>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Stopka -->
+<div class="footer">
+    Utworzona w: Aplikacja KSeF &bull; Schemat: FA(3) v1-0E
+</div>
+
+</body>
+</html>
