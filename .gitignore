@@ -58,6 +58,9 @@ htmlcov/
 *.DS_Store
 Thumbs.db
 
+# === Deployment docs (contain server-specific paths) ===
+DEPLOY_PRODUCTION.md
+
 # === Database files ===
 *.db
 *.sqlite
