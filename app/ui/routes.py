@@ -5,8 +5,9 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import quote as _url_quote
 
-from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
@@ -232,6 +233,12 @@ class UIAuthRequired(Exception):
     """Raised when a UI route requires an authenticated session cookie."""
 
 
+class UIForbidden(Exception):
+    """Raised when a UI user lacks the required role."""
+    def __init__(self, detail: str = "Brak uprawnień."):
+        self.detail = detail
+
+
 def get_current_ui_user(
     db: Session = Depends(get_db),
     session_token: str | None = Cookie(default=None, alias="session"),
@@ -243,10 +250,7 @@ def ui_require_roles(*role_codes: str):
     def dependency(current_user: AppUser = Depends(get_current_ui_user)) -> AppUser:
         current_roles = {item.role.role_code for item in current_user.roles}
         if not any(role in current_roles for role in role_codes):
-            raise HTTPException(
-                status_code=403,
-                detail=f"Brak wymaganej roli. Wymagane: {', '.join(role_codes)}",
-            )
+            raise UIForbidden(f"Brak wymaganej roli. Wymagane: {', '.join(role_codes)}")
         return current_user
     return dependency
 
@@ -407,6 +411,7 @@ def dashboard(
     request: Request,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
+    error: str | None = None,
 ):
     stats = {
         "total_invoices": db.scalar(select(func.count()).select_from(Invoice)),
@@ -441,6 +446,7 @@ def dashboard(
             "current_user": current_user,
             "stats": stats,
             "latest_invoices": latest_invoices,
+            "error": error,
         },
     )
 
@@ -450,6 +456,7 @@ def invoices_list(
     request: Request,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
+    error: str | None = None,
 ):
     items = list(
         db.execute(
@@ -473,6 +480,7 @@ def invoices_list(
             "current_user": current_user,
             "items": items,
             "title": "Faktury sprzedażowe",
+            "error": error,
         },
     )
 
@@ -853,7 +861,7 @@ def invoice_edit_form(
         .scalar_one_or_none()
     )
     if not invoice:
-        raise HTTPException(status_code=404, detail="Faktura nie istnieje.")
+        return RedirectResponse(url=f"/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
     if invoice.approved_at is not None:
         return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
 
@@ -1143,7 +1151,7 @@ def invoice_detail(
     )
 
     if not invoice:
-        raise HTTPException(status_code=404, detail="Faktura nie istnieje.")
+        return RedirectResponse(url=f"/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
 
     return templates.TemplateResponse(
         "invoice_detail.html",
@@ -1181,7 +1189,7 @@ def invoice_pdf(
     )
 
     if not invoice:
-        raise HTTPException(status_code=404, detail="Faktura nie istnieje.")
+        return RedirectResponse(url=f"/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
 
     pdf_bytes = generate_invoice_pdf(invoice)
     filename = f"faktura_{invoice.invoice_number.replace('/', '_')}.pdf"
@@ -1381,13 +1389,14 @@ def parties_list(
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
     success: str | None = None,
+    error: str | None = None,
 ):
     parties = list(
         db.execute(select(Party).order_by(Party.name_full)).scalars().all()
     )
     return templates.TemplateResponse(
         "parties_list.html",
-        {"request": request, "current_user": current_user, "parties": parties, "success": success},
+        {"request": request, "current_user": current_user, "parties": parties, "success": success, "error": error},
     )
 
 
@@ -1594,7 +1603,7 @@ def party_edit_form(
 ):
     party = db.get(Party, party_id)
     if not party:
-        raise HTTPException(status_code=404, detail="Kontrahent nie istnieje.")
+        return RedirectResponse(url=f"/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
     return templates.TemplateResponse(
         "party_form.html",
         {
@@ -1618,7 +1627,7 @@ async def party_edit_submit(
 ):
     party = db.get(Party, party_id)
     if not party:
-        raise HTTPException(status_code=404, detail="Kontrahent nie istnieje.")
+        return RedirectResponse(url=f"/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
 
     form = await request.form()
 
@@ -1667,7 +1676,7 @@ def party_delete(
 ):
     party = db.get(Party, party_id)
     if not party:
-        raise HTTPException(status_code=404, detail="Kontrahent nie istnieje.")
+        return RedirectResponse(url=f"/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
 
     used_on_invoice = db.execute(
         select(InvoiceParty.id).where(InvoiceParty.party_id == party_id).limit(1)
@@ -1698,6 +1707,7 @@ def accounting_batches_list(
     week: str = "",
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
+    error: str | None = None,
 ):
     from sqlalchemy import or_
 
@@ -1766,6 +1776,7 @@ def accounting_batches_list(
             "available_years": available_years,
             "available_months": available_months,
             "available_weeks": available_weeks,
+            "error": error,
         },
     )
 
@@ -1781,7 +1792,7 @@ def accounting_batch_detail(
 ):
     batch = db.get(AccountingBatch, batch_id)
     if not batch:
-        raise HTTPException(status_code=404, detail="Batch nie istnieje.")
+        return RedirectResponse(url=f"/ui/accounting-batches?error={_url_quote('Batch nie istnieje.')}", status_code=303)
 
     items = list(
         db.execute(
@@ -1926,6 +1937,7 @@ def users_list(
     request: Request,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(ui_require_roles("admin")),
+    error: str | None = None,
 ):
     users = (
         db.execute(
@@ -1939,7 +1951,7 @@ def users_list(
     )
     return templates.TemplateResponse(
         "users_list.html",
-        {"request": request, "current_user": current_user, "users": users},
+        {"request": request, "current_user": current_user, "users": users, "error": error},
     )
 
 
@@ -2089,7 +2101,7 @@ def user_edit_form(
         .scalar_one_or_none()
     )
     if not user:
-        raise HTTPException(status_code=404, detail="Użytkownik nie istnieje.")
+        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     all_roles = db.execute(select(AppRole).order_by(AppRole.role_code)).scalars().all()
     user_role_codes = {item.role.role_code for item in user.roles}
@@ -2130,7 +2142,7 @@ def user_edit_submit(
         .scalar_one_or_none()
     )
     if not user:
-        raise HTTPException(status_code=404, detail="Użytkownik nie istnieje.")
+        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     all_roles = db.execute(select(AppRole).order_by(AppRole.role_code)).scalars().all()
 
@@ -2176,7 +2188,7 @@ def user_totp_reset(
 
     user = db.get(AppUser, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Użytkownik nie istnieje.")
+        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     user.totp_secret = pyotp.random_base32()
     db.commit()
@@ -2191,7 +2203,7 @@ def user_totp_disable(
 ):
     user = db.get(AppUser, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Użytkownik nie istnieje.")
+        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     user.totp_secret = None
     db.commit()
@@ -2205,11 +2217,11 @@ def user_delete(
     current_user: AppUser = Depends(ui_require_roles("admin")),
 ):
     if user_id == current_user.id:
-        raise HTTPException(status_code=400, detail="Nie możesz usunąć własnego konta.")
+        return RedirectResponse(url=f"/ui/users?error={_url_quote('Nie możesz usunąć własnego konta.')}", status_code=303)
 
     user = db.get(AppUser, user_id)
     if not user:
-        raise HTTPException(status_code=404, detail="Użytkownik nie istnieje.")
+        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     db.execute(sql_delete(AppUserRole).where(AppUserRole.user_id == user_id))
     db.delete(user)

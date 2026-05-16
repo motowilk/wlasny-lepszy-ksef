@@ -6,6 +6,10 @@
     <a class="btn" href="/ui/users/new">+ Dodaj użytkownika</a>
 </div>
 
+{% if error %}
+<div class="alert alert-danger" role="alert">{{ error }}</div>
+{% endif %}
+
 <table class="table">
     <thead>
         <tr>

@@ -13,7 +13,7 @@ from app.api.routes.purchase_invoices import router as purchase_invoices_router
 from app.api.routes.users import router as users_router
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.ui.routes import UIAuthRequired, router as ui_router
+from app.ui.routes import UIAuthRequired, UIForbidden, router as ui_router
 
 configure_logging()
 
@@ -45,6 +45,12 @@ app.include_router(ui_router)
 @app.exception_handler(UIAuthRequired)
 async def ui_auth_required_handler(request: Request, exc: UIAuthRequired) -> RedirectResponse:
     return RedirectResponse(url="/ui/login", status_code=302)
+
+
+@app.exception_handler(UIForbidden)
+async def ui_forbidden_handler(request: Request, exc: UIForbidden) -> RedirectResponse:
+    from urllib.parse import quote
+    return RedirectResponse(url=f"/ui?error={quote(exc.detail)}", status_code=303)
 
 
 @app.get("/health", tags=["system"])
