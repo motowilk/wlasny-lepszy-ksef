@@ -1,8 +1,18 @@
 import base64
 import io
+import os
+import platform
 from pathlib import Path
 
 import qrcode
+
+# Ensure Homebrew libraries are discoverable on macOS before weasyprint import
+if platform.system() == "Darwin":
+    _brew_lib = "/opt/homebrew/lib"
+    if os.path.isdir(_brew_lib):
+        _current = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+        if _brew_lib not in _current:
+            os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = f"{_brew_lib}:{_current}" if _current else _brew_lib
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 
