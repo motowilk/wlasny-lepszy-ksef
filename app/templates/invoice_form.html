@@ -55,43 +55,12 @@
         </div>
     </section>
 
-    <!-- ═══ PŁATNOŚĆ ═══ -->
-    <section class="card">
-        <h2>Płatność</h2>
-        <div class="form-grid form-grid-3">
-            <label>
-                Forma płatności
-                <select name="payment_method">
-                    <option value="">— wybierz —</option>
-                    <option value="1"{{ ' selected' if prefill.get('payment_method') == '1' }}>Gotówka</option>
-                    <option value="2"{{ ' selected' if prefill.get('payment_method') == '2' }}>Karta</option>
-                    <option value="3"{{ ' selected' if prefill.get('payment_method') == '3' }}>Kredyt</option>
-                    <option value="5"{{ ' selected' if prefill.get('payment_method') == '5' }}>Kompensata</option>
-                    <option value="6"{{ ' selected' if prefill.get('payment_method') == '6' }}>Przelew bankowy</option>
-                    <option value="7"{{ ' selected' if prefill.get('payment_method') == '7' }}>Płatność mobilna</option>
-                </select>
-            </label>
-            <label class="span-2">
-                Nr rachunku bankowego (IBAN)
-                <input type="text" name="payment_account" value="{{ prefill.get('payment_account', '') }}" placeholder="PL1234567890123456789">
-            </label>
-            <label>
-                Kod SWIFT / BIC
-                <input type="text" name="payment_swift" value="{{ prefill.get('payment_swift', '') }}" placeholder="Np.: SWIFTBIC">
-            </label>
-            <label class="span-2">
-                Nazwa banku
-                <input type="text" name="payment_bank_name" value="{{ prefill.get('payment_bank_name', '') }}" placeholder="Np.: ING Bank Śląski S.A.">
-            </label>
-        </div>
-    </section>
-
     <!-- ═══ SPRZEDAWCA ═══ -->
     <section class="card">
         <h2>Sprzedawca — Podmiot 1</h2>
         <label>
             Wybierz sprzedawcę *
-            <select name="seller_party_id" required style="width:100%">
+            <select name="seller_party_id" id="seller_party_id" required style="width:100%" onchange="onSellerChanged()">
                 <option value="">— wybierz sprzedawcę —</option>
                 {% for p in parties %}
                 <option value="{{ p.id }}"
@@ -118,6 +87,37 @@
                 {% endfor %}
             </select>
         </label>
+    </section>
+
+    <!-- ═══ PŁATNOŚĆ ═══ -->
+    <section class="card">
+        <h2>Płatność</h2>
+        <div class="form-grid form-grid-3">
+            <label>
+                Forma płatności
+                <select name="payment_method">
+                    <option value="">— wybierz —</option>
+                    <option value="1"{{ ' selected' if prefill.get('payment_method') == '1' }}>Gotówka</option>
+                    <option value="2"{{ ' selected' if prefill.get('payment_method') == '2' }}>Karta</option>
+                    <option value="3"{{ ' selected' if prefill.get('payment_method') == '3' }}>Kredyt</option>
+                    <option value="5"{{ ' selected' if prefill.get('payment_method') == '5' }}>Kompensata</option>
+                    <option value="6"{{ ' selected' if prefill.get('payment_method') == '6' }}>Przelew bankowy</option>
+                    <option value="7"{{ ' selected' if prefill.get('payment_method') == '7' }}>Płatność mobilna</option>
+                </select>
+            </label>
+            <label class="span-2">
+                Nr rachunku bankowego (IBAN)
+                <input type="text" name="payment_account" id="payment_account" value="{{ prefill.get('payment_account', '') }}" placeholder="PL1234567890123456789">
+            </label>
+            <label>
+                Kod SWIFT / BIC
+                <input type="text" name="payment_swift" id="payment_swift" value="{{ prefill.get('payment_swift', '') }}" placeholder="Np.: SWIFTBIC">
+            </label>
+            <label class="span-2">
+                Nazwa banku
+                <input type="text" name="payment_bank_name" id="payment_bank_name" value="{{ prefill.get('payment_bank_name', '') }}" placeholder="Np.: ING Bank Śląski S.A.">
+            </label>
+        </div>
     </section>
 
     <!-- ═══ POZYCJE ═══ -->
@@ -178,6 +178,7 @@
 </form>
 
 <script type="application/json" id="prefilled-lines-data">{{ prefill.get('lines', [])|tojson }}</script>
+<script type="application/json" id="parties-bank-data">{{ parties_json|default([])|tojson }}</script>
 
 <script>
 var VAT_OPTIONS = [
@@ -240,6 +241,37 @@ function toggleExchangeRate() {
 }
 
 var PREFILLED_LINES = JSON.parse(document.getElementById('prefilled-lines-data').textContent);
+var PARTIES_BANK = JSON.parse(document.getElementById('parties-bank-data').textContent);
+
+function onSellerChanged() {
+    var sel = document.getElementById('seller_party_id');
+    var id = parseInt(sel.value, 10);
+    var party = PARTIES_BANK.find(function(p) { return p.id === id; });
+    if (party && party.bank_account) {
+        document.getElementById('payment_account').value = party.bank_account;
+        resolveIbanFields(party.bank_account);
+    }
+}
+
+function resolveIbanFields(iban) {
+    if (!iban || iban.length < 15) return;
+    fetch('/ui/iban-lookup?iban=' + encodeURIComponent(iban))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.swift) document.getElementById('payment_swift').value = d.swift;
+            if (d.bank_name) document.getElementById('payment_bank_name').value = d.bank_name;
+        })
+        .catch(function() {});
+}
+
+(function() {
+    var ibanInput = document.getElementById('payment_account');
+    if (ibanInput) {
+        ibanInput.addEventListener('blur', function() {
+            resolveIbanFields(ibanInput.value);
+        });
+    }
+})();
 
 (function init() {
     toggleExchangeRate();

@@ -14,6 +14,7 @@ from sqlalchemy import delete as sql_delete, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
+from app.core.iban_lookup import resolve_iban
 from app.core.security import (
     create_totp_pending_token,
     create_ui_session_token,
@@ -538,6 +539,14 @@ def purchase_invoices_fetch_ksef(
     )
 
 
+@router.get("/ui/iban-lookup")
+def iban_lookup(
+    iban: str = "",
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent", "reviewer")),
+):
+    return resolve_iban(iban)
+
+
 @router.get("/ui/invoices/new")
 def invoice_new_form(
     request: Request,
@@ -551,7 +560,12 @@ def invoice_new_form(
         .all()
     )
 
-    prefill: dict = {}
+    today_str = str(date.today())
+    prefill: dict = {
+        "issue_date": today_str,
+        "sale_date": today_str,
+        "due_date": today_str,
+    }
     if clone:
         src = (
             db.execute(
@@ -613,6 +627,10 @@ def invoice_new_form(
             "mode": "create",
             "prefill": prefill,
             "parties": all_parties,
+            "parties_json": [
+                {"id": p.id, "bank_account": p.bank_account or ""}
+                for p in all_parties
+            ],
         },
     )
 
@@ -839,6 +857,10 @@ def invoice_edit_form(
             "invoice_id": invoice_id,
             "prefill": prefill,
             "parties": all_parties,
+            "parties_json": [
+                {"id": p.id, "bank_account": p.bank_account or ""}
+                for p in all_parties
+            ],
             "error": error_msg,
         },
     )
@@ -1520,6 +1542,37 @@ async def party_edit_submit(
 
     db.commit()
     return RedirectResponse(url=f"/ui/parties/{party_id}/edit?success=1", status_code=303)
+
+
+@router.post("/ui/parties/{party_id}/delete")
+def party_delete(
+    party_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin")),
+):
+    party = db.get(Party, party_id)
+    if not party:
+        raise HTTPException(status_code=404, detail="Kontrahent nie istnieje.")
+
+    used_on_invoice = db.execute(
+        select(InvoiceParty.id).where(InvoiceParty.party_id == party_id).limit(1)
+    ).first()
+
+    if used_on_invoice:
+        party.is_active = False
+        db.commit()
+        return RedirectResponse(
+            url="/ui/parties?success=Kontrahent+zosta%C5%82+dezaktywowany+(wyst%C4%99puje+na+fakturach).",
+            status_code=303,
+        )
+    else:
+        db.delete(party)
+        db.commit()
+        return RedirectResponse(
+            url="/ui/parties?success=Kontrahent+zosta%C5%82+trwale+usuni%C4%99ty.",
+            status_code=303,
+        )
 
 
 @router.get("/ui/accounting-batches")
