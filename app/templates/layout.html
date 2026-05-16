@@ -238,7 +238,7 @@
     }
 
     function wsRefresh() {
-        fetch('/ui/api/worker-status')
+        fetch('{{ root_path }}/ui/api/worker-status')
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (data) { if (data) wsRender(data); })
             .catch(function () {});
