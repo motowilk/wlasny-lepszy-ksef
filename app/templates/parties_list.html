@@ -7,7 +7,7 @@
 </div>
 
 {% if success %}
-<div class="alert alert-success" role="alert" style="margin-bottom:1rem">{{ success }}</div>
+<div class="alert alert-success" role="alert">{{ success }}</div>
 {% endif %}
 
 <section class="card" style="padding:0">
@@ -28,27 +28,27 @@
             <tr>
                 <td>
                     <strong>{{ p.name_full }}</strong>
-                    {% if p.name_short %}<br><span style="color:#888;font-size:12px">{{ p.name_short }}</span>{% endif %}
+                    {% if p.name_short %}<br><span class="text-small">{{ p.name_short }}</span>{% endif %}
                 </td>
                 <td>
-                    {% if p.tax_id %}{{ p.tax_id }}{% elif p.vat_eu_id %}{{ p.vat_eu_id }}{% else %}<span style="color:#aaa">—</span>{% endif %}
+                    {% if p.tax_id %}{{ p.tax_id }}{% elif p.vat_eu_id %}{{ p.vat_eu_id }}{% else %}<span class="text-muted-light">—</span>{% endif %}
                 </td>
                 <td>{{ p.country_code or "—" }}</td>
                 <td>{{ p.city or "—" }}</td>
                 <td>{{ p.email or "—" }}</td>
                 <td>
                     {% if p.is_active %}
-                    <span style="color:#2d9e5a;font-weight:600">Aktywny</span>
+                    <span class="text-active">Aktywny</span>
                     {% else %}
-                    <span style="color:#aaa">Nieaktywny</span>
+                    <span class="text-muted-light">Nieaktywny</span>
                     {% endif %}
                 </td>
                 <td>
-                    <a class="btn secondary" href="/ui/parties/{{ p.id }}/edit" style="padding:4px 10px;font-size:12px">Edytuj</a>
+                    <a class="btn secondary btn-sm" href="/ui/parties/{{ p.id }}/edit">Edytuj</a>
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="7" style="text-align:center;color:#aaa;padding:2rem">Brak kontrahentów. <a href="/ui/parties/new">Dodaj pierwszego.</a></td></tr>
+            <tr><td colspan="7" class="text-center" style="color:#aaa;padding:2rem">Brak kontrahentów. <a href="/ui/parties/new">Dodaj pierwszego.</a></td></tr>
             {% endfor %}
         </tbody>
     </table>

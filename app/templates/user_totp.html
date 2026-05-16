@@ -8,7 +8,7 @@
 
 <p><strong>Konto:</strong> {{ user.display_name }} (<code>{{ user.username }}</code>)</p>
 
-<div style="max-width:280px;margin:1.5rem 0;border:1px solid #ddd;padding:.5rem;display:inline-block;background:#fff">
+<div class="qr-box">
     {{ qr_svg | safe }}
 </div>
 
@@ -17,7 +17,7 @@
     <code style="font-size:1.1em;letter-spacing:.1em">{{ totp_secret }}</code>
 </p>
 
-<div style="background:#fff8e1;border:1px solid #f0c000;padding:.75rem 1rem;border-radius:4px;margin:1.5rem 0;max-width:600px">
+<div class="alert alert-warning" style="max-width:600px">
     <strong>Ważne:</strong> Ten kod QR jest wyświetlany <strong>jednorazowo</strong>.
     Zanim opuścisz tę stronę, upewnij się, że aplikacja uwierzytelniająca poprawnie
     weryfikuje kody TOTP. W razie potrzeby możesz wygenerować nowy kod QR

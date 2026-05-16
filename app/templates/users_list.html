@@ -37,7 +37,7 @@
                 {% if user.id != current_user.id %}
                 &nbsp;|&nbsp;
                 <form method="post" action="/ui/users/{{ user.id }}/delete"
-                      style="display:inline"
+                      class="d-inline"
                       onsubmit="return confirm('Usunąć użytkownika {{ user.username }}?')">
                     <button type="submit" class="btn-link">Usuń</button>
                 </form>
@@ -45,7 +45,7 @@
             </td>
         </tr>
     {% else %}
-        <tr><td colspan="8" style="text-align:center">Brak użytkowników</td></tr>
+        <tr><td colspan="8" class="text-center">Brak użytkowników</td></tr>
     {% endfor %}
     </tbody>
 </table>

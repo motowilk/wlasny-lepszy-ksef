@@ -7,12 +7,12 @@
 </div>
 
 {% if action_success %}
-<div style="background:#d4edda;color:#155724;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-weight:500">
+<div class="alert alert-success">
     ✓ {{ action_success }}
 </div>
 {% endif %}
 {% if action_error %}
-<div style="background:#f8d7da;color:#721c24;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-weight:500">
+<div class="alert alert-error">
     Błąd: {{ action_error }}
 </div>
 {% endif %}
@@ -29,25 +29,25 @@
 </div>
 
 {% if batch.status == 'GENERATED' %}
-<div class="card" style="margin-top:16px">
+<div class="card mt-16">
     <h2>Ustawienia batcha</h2>
     <form method="post" action="/ui/accounting-batches/{{ batch.id }}/update-settings">
-        <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;padding:12px 16px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef">
+        <div class="filter-panel">
             <div>
-                <label for="batch_type" style="font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Typ</label>
-                <select name="batch_type" id="batch_type" style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box;min-width:140px">
+                <label for="batch_type" class="label-upper">Typ</label>
+                <select name="batch_type" id="batch_type" class="filter-input filter-input-wide">
                     <option value="MONTHLY" {{ 'selected' if batch.batch_type == 'MONTHLY' }}>MONTHLY</option>
                     <option value="WEEKLY" {{ 'selected' if batch.batch_type == 'WEEKLY' }}>WEEKLY</option>
                 </select>
             </div>
             <div>
-                <label for="send_at" style="font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Wyślij po</label>
+                <label for="send_at" class="label-upper">Wyślij po</label>
                 <input type="datetime-local" name="send_at" id="send_at"
                        value="{{ batch.send_at.strftime('%Y-%m-%dT%H:%M') if batch.send_at else '' }}"
-                       style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box">
+                       class="filter-input">
             </div>
             <div>
-                <button type="submit" class="btn" style="height:32px;padding:5px 16px;font-size:13px;box-sizing:border-box">Zapisz</button>
+                <button type="submit" class="btn btn-filter">Zapisz</button>
             </div>
         </div>
     </form>
@@ -76,7 +76,7 @@ document.getElementById('batch_type').addEventListener('change', function() {
 </script>
 {% endif %}
 
-<section class="card" style="margin-top:16px">
+<section class="card mt-16">
     <h2>Faktury w batchu</h2>
     <table class="table">
         <thead>
@@ -99,13 +99,13 @@ document.getElementById('batch_type').addEventListener('change', function() {
                 <td>{{ item.invoice.issue_date if item.invoice else '-' }}</td>
                 <td>{{ item.invoice.gross_total|plnum if item.invoice else '-' }}</td>
                 <td>
-                    <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#d4edda;color:#155724">{{ item.inclusion_status }}</span>
+                    <span class="pill-inclusion">{{ item.inclusion_status }}</span>
                 </td>
                 <td>
-                    <a class="btn-detail" href="/ui/invoices/{{ item.invoice_id }}" style="margin-right:6px">Szczegóły</a>
+                    <a class="btn-detail mr-6" href="/ui/invoices/{{ item.invoice_id }}">Szczegóły</a>
                     {% if batch.status == 'GENERATED' %}
-                    <form method="post" action="/ui/accounting-batches/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form" style="display:inline">
-                        <button type="submit" class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="return confirm('Usunąć fakturę z batcha?')">Usuń z batcha</button>
+                    <form method="post" action="/ui/accounting-batches/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form d-inline">
+                        <button type="submit" class="btn secondary btn-sm" onclick="return confirm('Usunąć fakturę z batcha?')">Usuń z batcha</button>
                     </form>
                     {% endif %}
                 </td>

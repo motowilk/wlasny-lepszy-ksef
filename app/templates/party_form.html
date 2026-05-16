@@ -7,10 +7,10 @@
 </div>
 
 {% if saved %}
-<div class="alert alert-success" role="alert" style="margin-bottom:1rem">Zapisano zmiany.</div>
+<div class="alert alert-success" role="alert">Zapisano zmiany.</div>
 {% endif %}
 {% if error %}
-<div class="alert alert-error" role="alert" style="margin-bottom:1rem">{{ error }}</div>
+<div class="alert alert-error" role="alert">{{ error }}</div>
 {% endif %}
 
 {% set v = party if mode == "edit" else prefill %}
