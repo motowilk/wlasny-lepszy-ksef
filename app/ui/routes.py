@@ -354,7 +354,7 @@ def totp_submit(
     return resp
 
 
-@router.get("/ui/logout")
+@router.post("/ui/logout")
 def logout(
     db: Session = Depends(get_db),
     session_token: str | None = Cookie(default=None, alias="session"),
