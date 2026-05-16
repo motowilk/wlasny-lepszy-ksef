@@ -35,6 +35,7 @@ from app.db.models import (
     NotificationLog,
     Party,
 )
+from app.adapters.notification.discord import DiscordNotificationAdapter
 from app.schemas.invoice import (
     InvoiceCreateRequest,
     InvoiceLinePayload,
@@ -295,6 +296,10 @@ def login_submit(
     session_nonce = _rotate_user_session_nonce(user)
     db.commit()
 
+    DiscordNotificationAdapter().send(
+        f"Właśnie zalogował się {user.display_name} - {user.email} - {datetime.now(tz=timezone.utc)}"
+    )
+
     token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
     resp = RedirectResponse(url="/ui", status_code=303)
     resp.set_cookie(
@@ -348,6 +353,10 @@ def totp_submit(
     user.last_login_at = datetime.now(tz=timezone.utc)
     session_nonce = _rotate_user_session_nonce(user)
     db.commit()
+
+    DiscordNotificationAdapter().send(
+        f"Właśnie zalogował się {user.display_name} - {user.email} - {datetime.now(tz=timezone.utc)}"
+    )
 
     session_token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
     resp = RedirectResponse(url="/ui", status_code=303)

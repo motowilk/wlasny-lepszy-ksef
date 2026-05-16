@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.notification.discord import DiscordNotificationAdapter
 from app.db.models import Invoice, InvoiceEvent, InvoicePayload
 from app.services.invoice_service import InvoiceService
 from app.services.ksef_xml_parser import parse_fa3_xml
@@ -94,6 +95,16 @@ class KsefImportService:
 
         db.commit()
         db.refresh(invoice)
+
+        seller_name = ""
+        for ip in invoice.parties:
+            if ip.role_code == "SELLER":
+                seller_name = ip.party.name_full if ip.party else ""
+                break
+        DiscordNotificationAdapter().send(
+            f"Pobrano fakturę zakupową {invoice.invoice_number} od {seller_name} na kwotę {invoice.gross_total}"
+        )
+
         logger.info(
             "Imported invoice id=%s ksef_number=%s invoice_number=%s",
             invoice.id,

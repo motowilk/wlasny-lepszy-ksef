@@ -24,6 +24,7 @@ from app.schemas.invoice import (
     InvoiceListQuery,
     InvoiceUpdateRequest,
 )
+from app.adapters.notification.discord import DiscordNotificationAdapter
 from app.services.validation_service import ValidationService
 
 TWOPLACES = Decimal("0.01")
@@ -90,6 +91,17 @@ class InvoiceService:
 
         db.commit()
         db.refresh(invoice)
+
+        if invoice.direction_code == "SALE":
+            buyer_name = ""
+            for ip in invoice.parties:
+                if ip.role_code == "BUYER":
+                    buyer_name = ip.party.name_full if ip.party else ""
+                    break
+            DiscordNotificationAdapter().send(
+                f"Utworzono fakturę sprzedażową {invoice.invoice_number}, dla {buyer_name}"
+            )
+
         return InvoiceService.get_invoice(db, invoice.id)
 
     @staticmethod
