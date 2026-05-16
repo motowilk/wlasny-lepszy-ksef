@@ -35,9 +35,21 @@
             {% endif %}
             {% endif %}
             {% if invoice.accounting_qualified and not invoice.accounting_batch_id %}
+            {% if open_batches %}
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6" style="display:inline-flex;align-items:center;gap:0.5rem;">
+                <select name="batch_id" class="form-control" style="min-width:280px;">
+                    <option value="">— Utwórz nowy pakiet —</option>
+                    {% for b in open_batches %}
+                    <option value="{{ b.id }}">{{ b.batch_code }} | {{ b.batch_type }} ({{ b.item_count }} fakt.)</option>
+                    {% endfor %}
+                </select>
+                <button class="btn" type="submit">Dodaj do pakietu</button>
+            </form>
+            {% else %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
                 <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
+            {% endif %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
                 <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
             </form>
@@ -52,9 +64,21 @@
             </form>
             {% endif %}
             {% if invoice.accounting_qualified %}
+            {% if open_batches %}
+            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6" style="display:inline-flex;align-items:center;gap:0.5rem;">
+                <select name="batch_id" class="form-control" style="min-width:280px;">
+                    <option value="">— Utwórz nowy pakiet —</option>
+                    {% for b in open_batches %}
+                    <option value="{{ b.id }}">{{ b.batch_code }} | {{ b.batch_type }} ({{ b.item_count }} fakt.)</option>
+                    {% endfor %}
+                </select>
+                <button class="btn" type="submit">Dodaj do pakietu</button>
+            </form>
+            {% else %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
                 <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
+            {% endif %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
                 <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
             </form>

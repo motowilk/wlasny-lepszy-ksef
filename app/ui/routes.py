@@ -1153,12 +1153,19 @@ def invoice_detail(
     if not invoice:
         return RedirectResponse(url=f"/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
 
+    # Fetch open batches for the "add to batch" choice dialog
+    open_batches = []
+    if invoice.accounting_qualified and not invoice.accounting_batch_id:
+        from app.services.accounting_service import AccountingService
+        open_batches = AccountingService.get_open_batches(db)
+
     return templates.TemplateResponse(
         "invoice_detail.html",
         {
             "request": request,
             "current_user": current_user,
             "invoice": invoice,
+            "open_batches": open_batches,
             "action_success": action_success,
             "action_error": action_error,
         },
@@ -1294,17 +1301,21 @@ def invoice_undo_qualify(
 @router.post("/ui/invoices/{invoice_id}/dodaj-do-pakietu")
 def invoice_add_to_batch(
     invoice_id: int,
+    batch_id: str | None = Form(None),
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(ui_require_roles("admin", "owner")),
 ):
     from urllib.parse import urlencode
     from app.services.accounting_service import AccountingService
 
+    resolved_batch_id = int(batch_id) if batch_id else None
+
     try:
         batch = AccountingService.add_single_invoice_to_batch(
             db=db,
             invoice_id=invoice_id,
             created_by=current_user.id,
+            batch_id=resolved_batch_id,
         )
         params = urlencode({"action_success": f"Dodano do pakietu {batch.batch_code}."})
     except ValueError as exc:

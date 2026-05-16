@@ -107,15 +107,17 @@ def qualify_invoice_for_accounting(
 @router.post("/invoices/{invoice_id}/add-to-batch", response_model=AccountingBatchRead)
 def add_invoice_to_batch(
     invoice_id: int,
+    batch_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(require_roles("admin", "agent", "owner")),
 ) -> AccountingBatchRead:
-    """Add a single qualified invoice to the monthly batch for sending to accounting office."""
+    """Add a single qualified invoice to a batch. Optionally specify batch_id to add to an existing open batch."""
     try:
         batch = AccountingService.add_single_invoice_to_batch(
             db=db,
             invoice_id=invoice_id,
             created_by=current_user.id,
+            batch_id=batch_id,
         )
         return AccountingBatchRead.model_validate(batch, from_attributes=True)
     except ValueError as exc:

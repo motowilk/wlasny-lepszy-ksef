@@ -239,12 +239,28 @@ class AccountingService:
             raise
 
     @staticmethod
+    def get_open_batches(db: Session) -> list[AccountingBatch]:
+        """Return all batches with status GENERATED (open for adding invoices)."""
+        return list(
+            db.execute(
+                select(AccountingBatch)
+                .where(AccountingBatch.status == "GENERATED")
+                .order_by(AccountingBatch.period_year.desc(), AccountingBatch.period_month.desc())
+            ).scalars().all()
+        )
+
+    @staticmethod
     def add_single_invoice_to_batch(
         db: Session,
         invoice_id: int,
         created_by: int | None = None,
+        batch_id: int | None = None,
     ) -> AccountingBatch:
-        """Add a single qualified invoice to the monthly batch for its period."""
+        """Add a single qualified invoice to a batch.
+
+        If batch_id is given, use that specific open batch.
+        Otherwise find/create a monthly batch for the invoice period.
+        """
         invoice = db.get(Invoice, invoice_id)
         if not invoice:
             raise ValueError(f"Invoice id={invoice_id} nie istnieje.")
@@ -256,35 +272,44 @@ class AccountingService:
         period_year = invoice.issue_date.year
         period_month = invoice.issue_date.month
 
-        # Reuse existing batch or create new one (never reuse SENT)
-        existing_batch = db.execute(
-            select(AccountingBatch).where(
-                AccountingBatch.batch_type == "MONTHLY",
-                AccountingBatch.period_year == period_year,
-                AccountingBatch.period_month == period_month,
-                AccountingBatch.status == "GENERATED",
-            )
-        ).scalar_one_or_none()
-
-        if existing_batch:
-            batch = existing_batch
+        if batch_id:
+            # Use the explicitly chosen batch
+            chosen_batch = db.get(AccountingBatch, batch_id)
+            if not chosen_batch:
+                raise ValueError(f"Pakiet id={batch_id} nie istnieje.")
+            if chosen_batch.status != "GENERATED":
+                raise ValueError("Wybrany pakiet nie jest otwarty (status != GENERATED).")
+            batch = chosen_batch
         else:
-            batch = AccountingBatch(
-                batch_uuid=str(uuid.uuid4()),
-                batch_code=(
-                    f"BATCH-{period_year}-{period_month:02d}-"
-                    f"{uuid.uuid4().hex[:8].upper()}"
-                ),
-                batch_type="MONTHLY",
-                status="GENERATED",
-                period_year=period_year,
-                period_month=period_month,
-                created_by=created_by,
-                item_count=0,
-                send_at=_default_send_at("MONTHLY", date(period_year, period_month, 1)),
-            )
-            db.add(batch)
-            db.flush()
+            # Reuse existing batch or create new one (never reuse SENT)
+            existing_batch = db.execute(
+                select(AccountingBatch).where(
+                    AccountingBatch.batch_type == "MONTHLY",
+                    AccountingBatch.period_year == period_year,
+                    AccountingBatch.period_month == period_month,
+                    AccountingBatch.status == "GENERATED",
+                )
+            ).scalar_one_or_none()
+
+            if existing_batch:
+                batch = existing_batch
+            else:
+                batch = AccountingBatch(
+                    batch_uuid=str(uuid.uuid4()),
+                    batch_code=(
+                        f"BATCH-{period_year}-{period_month:02d}-"
+                        f"{uuid.uuid4().hex[:8].upper()}"
+                    ),
+                    batch_type="MONTHLY",
+                    status="GENERATED",
+                    period_year=period_year,
+                    period_month=period_month,
+                    created_by=created_by,
+                    item_count=0,
+                    send_at=_default_send_at("MONTHLY", date(period_year, period_month, 1)),
+                )
+                db.add(batch)
+                db.flush()
 
         db.add(
             AccountingBatchInvoice(
