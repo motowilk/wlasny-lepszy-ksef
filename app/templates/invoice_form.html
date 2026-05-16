@@ -212,7 +212,7 @@ function addLine(desc, unit, qty, price, vat, exr) {
         '<td><input type="number" step="0.000001" name="line_price_' + n + '" value="' + esc(price) + '" required style="width:100%"></td>' +
         '<td>' + vatSelect('line_vat_' + n, vat || '23') + '</td>' +
         '<td><input type="number" step="0.0001" name="line_exchange_rate_' + n + '" value="' + esc(exr) + '" placeholder="auto" style="width:100%"></td>' +
-        '<td><button type="button" class="btn secondary" onclick="removeLine(this)" title="Usuń" style="padding:4px 8px">✕</button></td>';
+        '<td><button type="button" class="btn danger-secondary btn-sm" onclick="removeLine(this)" title="Usuń">✕</button></td>';
     document.getElementById('lines-body').appendChild(tr);
     document.getElementById('line_count').value = document.querySelectorAll('#lines-body tr').length;
 }

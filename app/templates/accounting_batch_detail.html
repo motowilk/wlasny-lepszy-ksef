@@ -105,7 +105,7 @@ document.getElementById('batch_type').addEventListener('change', function() {
                     <a class="btn-detail mr-6" href="/ui/invoices/{{ item.invoice_id }}">Szczegóły</a>
                     {% if batch.status == 'GENERATED' %}
                     <form method="post" action="/ui/accounting-batches/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form d-inline">
-                        <button type="submit" class="btn secondary btn-sm" onclick="return confirm('Usunąć fakturę z batcha?')">Usuń z batcha</button>
+                        <button type="submit" class="btn danger btn-sm" onclick="return confirm('Usunąć fakturę z batcha?')">Usuń z batcha</button>
                     </form>
                     {% endif %}
                 </td>

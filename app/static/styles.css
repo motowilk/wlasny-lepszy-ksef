@@ -62,6 +62,31 @@ body {
 .user-box {
     font-size: 12px;
     color: #b8d0f0;
+    display: flex;
+    align-items: center;
+}
+
+.btn-logout {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    color: #b8d0f0;
+    background: transparent;
+    border: 1px solid #b8d0f0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    text-decoration: none;
+}
+.btn-logout:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    border-color: #fff;
 }
 
 /* Content */
@@ -152,47 +177,116 @@ h2 {
     background: #f8fafc;
 }
 
-/* Buttons */
+/* Buttons — Siemens IX-inspired variants */
 .btn {
-    display: inline-block;
-    background: #1e3a5f;
-    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 5rem;
+    height: 36px;
+    padding: 0 16px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    line-height: 1;
     border: none;
     border-radius: 4px;
-    padding: 8px 16px;
     cursor: pointer;
     text-decoration: none;
-    font-size: 13px;
-    font-family: inherit;
+    gap: 6px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+    box-sizing: border-box;
+    /* Primary (default) */
+    background: #0066cc;
+    color: #fff;
 }
-
 .btn:hover {
-    background: #2c5282;
+    background: #0055aa;
+}
+.btn:active {
+    background: #004488;
 }
 
+/* Secondary */
 .btn.secondary {
-    background: #e2e8f0;
-    color: #333;
+    background: transparent;
+    color: #0066cc;
+    border: 1px solid #0066cc;
 }
-
 .btn.secondary:hover {
-    background: #cbd5e0;
+    background: rgba(0, 102, 204, 0.08);
+}
+.btn.secondary:active {
+    background: rgba(0, 102, 204, 0.16);
 }
 
+/* Tertiary / ghost */
+.btn.tertiary {
+    background: transparent;
+    color: #0066cc;
+    border: none;
+}
+.btn.tertiary:hover {
+    background: rgba(0, 102, 204, 0.08);
+}
+.btn.tertiary:active {
+    background: rgba(0, 102, 204, 0.16);
+}
+
+/* Danger primary */
+.btn.danger {
+    background: #d41919;
+    color: #fff;
+    border: none;
+}
+.btn.danger:hover {
+    background: #b81414;
+}
+.btn.danger:active {
+    background: #9c1010;
+}
+
+/* Danger secondary (outlined) */
+.btn.danger-secondary {
+    background: transparent;
+    color: #d41919;
+    border: 1px solid #d41919;
+}
+.btn.danger-secondary:hover {
+    background: rgba(212, 25, 25, 0.08);
+}
+.btn.danger-secondary:active {
+    background: rgba(212, 25, 25, 0.16);
+}
+
+/* Detail / row-level action */
 .btn-detail {
-    display: inline-block;
-    padding: 5px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0 12px;
     font-size: 12px;
     font-weight: 600;
-    color: #fff;
-    background: #2563eb;
-    border-radius: 6px;
+    font-family: inherit;
+    color: #0066cc;
+    background: transparent;
+    border: 1px solid #0066cc;
+    border-radius: 4px;
     text-decoration: none;
-    transition: background 0.2s;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.btn-detail:hover {
+    background: rgba(0, 102, 204, 0.08);
 }
 
-.btn-detail:hover {
-    background: #1d4ed8;
+/* Small button */
+.btn-sm {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    min-width: auto;
 }
 
 /* Forms */
@@ -551,47 +645,72 @@ h2 {
 /* ── Filter panel ──────────────────────────────────────────────────────────── */
 .filter-panel {
     display: flex;
-    gap: 16px;
+    gap: 12px;
     margin-bottom: 14px;
     flex-wrap: wrap;
     align-items: flex-end;
     padding: 12px 16px;
     background: #f8f9fa;
-    border-radius: 8px;
-    border: 1px solid #e9ecef;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
 }
 
 /* ── Filter inputs & controls ──────────────────────────────────────────────── */
 .filter-input {
     display: block;
-    padding: 5px 10px;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
+    padding: 0 12px;
+    border: 1px solid #b0b8c4;
+    border-radius: 4px;
     font-size: 13px;
+    font-family: inherit;
     background: #fff;
-    height: 32px;
+    height: 36px;
     box-sizing: border-box;
+    color: #222;
+    outline: none;
+    transition: border-color 0.15s;
 }
-.filter-input-wide { min-width: 140px; }
+.filter-input:focus {
+    border-color: #0072c3;
+    box-shadow: 0 0 0 1px #0072c3;
+}
+.filter-input-wide { min-width: 150px; }
 .filter-search {
-    width: 100%;
-    padding: 8px 12px;
-    margin-bottom: 12px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
+    flex: 1 1 auto;
+    min-width: 220px;
+    padding: 0 12px;
+    border: 1px solid #b0b8c4;
+    border-radius: 4px;
     font-size: 13px;
+    font-family: inherit;
+    background: #fff;
+    height: 36px;
+    box-sizing: border-box;
+    color: #222;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.filter-search:focus {
+    border-color: #0072c3;
+    box-shadow: 0 0 0 1px #0072c3;
 }
 .filter-btn-clear {
-    padding: 6px 14px;
-    font-size: 12px;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid #b0b8c4;
+    border-radius: 4px;
     background: #fff;
     color: #495057;
     cursor: pointer;
     font-weight: 500;
-    height: 32px;
+    height: 36px;
     box-sizing: border-box;
+    transition: background 0.15s, border-color 0.15s;
+}
+.filter-btn-clear:hover {
+    background: #f0f0f0;
+    border-color: #888;
 }
 
 /* ── Filter fieldset reset ─────────────────────────────────────────────────── */
@@ -608,39 +727,35 @@ h2 {
     padding: 0;
     margin: 0;
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
+    gap: 8px;
+    align-items: flex-end;
 }
 
 /* ── Filter labels ─────────────────────────────────────────────────────────── */
 .label-upper {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #495057;
-    text-transform: uppercase;
-    letter-spacing: .5px;
     display: block;
     margin-bottom: 4px;
 }
 .label-upper-legend {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #495057;
-    text-transform: uppercase;
-    letter-spacing: .5px;
     margin-bottom: 4px;
 }
 .label-upper-legend-spaced {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #495057;
-    text-transform: uppercase;
-    letter-spacing: .5px;
-    margin-bottom: 20px;
+    margin-bottom: 4px;
 }
 .label-hint {
-    font-size: 10px;
+    font-size: 11px;
     color: #6c757d;
+    margin-bottom: 2px;
+    display: block;
 }
 .label-form {
     font-size: 12px;
@@ -650,25 +765,41 @@ h2 {
 /* ── Inline table filter (in thead) ────────────────────────────────────────── */
 .thead-filter {
     width: 100%;
-    padding: 5px 10px;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
+    padding: 0 10px;
+    border: 1px solid #b0b8c4;
+    border-radius: 4px;
     font-size: 13px;
+    font-family: inherit;
     background: #fff;
-    height: 32px;
+    height: 36px;
     box-sizing: border-box;
     font-weight: 400;
+    color: #222;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.thead-filter:focus {
+    border-color: #0072c3;
+    box-shadow: 0 0 0 1px #0072c3;
 }
 .thead-filter-text {
     width: 100%;
-    padding: 5px 10px;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
+    padding: 0 10px;
+    border: 1px solid #b0b8c4;
+    border-radius: 4px;
     font-size: 13px;
+    font-family: inherit;
     background: #fff;
-    height: 32px;
+    height: 36px;
     box-sizing: border-box;
     font-weight: 400;
+    color: #222;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.thead-filter-text:focus {
+    border-color: #0072c3;
+    box-shadow: 0 0 0 1px #0072c3;
 }
 .th-filter { padding-bottom: 4px; }
 
@@ -680,9 +811,21 @@ h2 {
     flex-wrap: wrap;
 }
 .fetch-form-input {
-    padding: 6px 10px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
+    padding: 0 12px;
+    border: 1px solid #b0b8c4;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    background: #fff;
+    height: 36px;
+    box-sizing: border-box;
+    color: #222;
+    outline: none;
+    transition: border-color 0.15s;
+}
+.fetch-form-input:focus {
+    border-color: #0072c3;
+    box-shadow: 0 0 0 1px #0072c3;
 }
 
 /* ── Misc layout utilities ─────────────────────────────────────────────────── */
@@ -721,29 +864,32 @@ h2 {
     background: #fff;
 }
 
-/* ── Party table small text ────────────────────────────────────────────────── */
-.btn-sm {
-    padding: 4px 10px;
-    font-size: 12px;
-}
-
-/* ── User delete inline button ─────────────────────────────────────────────── */
+/* ── Inline action button (logout, table delete) ──────────────────────────── */
 .btn-link {
-    background: none;
-    border: none;
-    color: #c0392b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid #d41919;
+    border-radius: 4px;
+    color: #d41919;
     cursor: pointer;
-    font-size: inherit;
+    font-size: 12px;
+    font-weight: 600;
     font-family: inherit;
-    padding: 0;
-    text-decoration: underline;
+    height: 28px;
+    padding: 0 10px;
+    text-decoration: none;
+    transition: background 0.15s;
 }
-.btn-link:hover { color: #e74c3c; }
+.btn-link:hover {
+    background: rgba(212, 25, 25, 0.08);
+}
 
 /* ── Batch settings btn in filter row ──────────────────────────────────────── */
 .btn-filter {
-    height: 32px;
-    padding: 5px 16px;
+    height: 36px;
+    padding: 0 16px;
     font-size: 13px;
     box-sizing: border-box;
 }

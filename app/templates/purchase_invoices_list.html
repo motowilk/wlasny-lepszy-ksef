@@ -13,7 +13,7 @@
             <label class="label-form">Data do</label><br>
             <input type="date" name="date_to" required class="fetch-form-input">
         </div>
-        <button type="submit" class="btn-detail" style="padding:8px 16px">Pobierz z KSeF</button>
+        <button type="submit" class="btn">Pobierz z KSeF</button>
     </form>
     {% if fetch_result is defined and fetch_result %}
     <p class="text-success" style="margin-top:10px">Zaimportowano {{ fetch_result }} faktur.</p>
@@ -24,10 +24,10 @@
 </section>
 
 <section class="card">
-    <input type="text" id="purchase-filter" placeholder="Szukaj w tabeli..." class="filter-search">
     <div class="filter-panel">
+        <input type="text" id="purchase-filter" placeholder="Szukaj w tabeli..." class="filter-search">
         <fieldset class="filter-fieldset">
-            <legend class="label-upper-legend">Data wystawienia</legend>
+            <legend class="label-upper-legend">Wystawienie</legend>
             <div>
                 <label for="filter-issue-from" class="label-hint">od</label>
                 <input type="date" id="filter-issue-from" class="filter-input">
@@ -38,7 +38,7 @@
             </div>
         </fieldset>
         <fieldset class="filter-fieldset">
-            <legend class="label-upper-legend">Termin płatności</legend>
+            <legend class="label-upper-legend">Płatność</legend>
             <div>
                 <label for="filter-due-from" class="label-hint">od</label>
                 <input type="date" id="filter-due-from" class="filter-input">
@@ -48,8 +48,8 @@
                 <input type="date" id="filter-due-to" class="filter-input">
             </div>
         </fieldset>
-        <fieldset class="filter-fieldset-col">
-            <legend class="label-upper-legend-spaced">Kwalifikacja</legend>
+        <fieldset class="filter-fieldset">
+            <legend class="label-upper-legend">Kwalifikacja</legend>
             <select id="filter-qualified" class="filter-input filter-input-wide">
                 <option value="">Wszystkie</option>
                 <option value="tak">Zakwalifikowane</option>

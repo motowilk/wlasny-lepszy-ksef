@@ -33,9 +33,8 @@
             <td>{{ "✗" if user.is_locked else "—" }}</td>
             <td>{{ "✓" if user.totp_secret else "—" }}</td>
             <td>
-                <a href="/ui/users/{{ user.id }}/edit">Edytuj</a>
+                <a class="btn-detail" href="/ui/users/{{ user.id }}/edit">Edytuj</a>
                 {% if user.id != current_user.id %}
-                &nbsp;|&nbsp;
                 <form method="post" action="/ui/users/{{ user.id }}/delete"
                       class="d-inline"
                       onsubmit="return confirm('Usunąć użytkownika {{ user.username }}?')">

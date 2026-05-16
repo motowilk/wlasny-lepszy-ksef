@@ -29,7 +29,7 @@
             </form>
             {% if invoice.erp_status != 'BLOCKED' %}
             <form method="post" action="/ui/invoices/{{ invoice.id }}/reject-accounting" class="inline-form ml-6">
-                <button class="btn secondary" type="submit">Odrzuć z procesu</button>
+                <button class="btn danger-secondary" type="submit">Odrzuć z procesu</button>
             </form>
             {% endif %}
             {% endif %}
