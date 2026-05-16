@@ -55,9 +55,16 @@ from app.schemas.invoice import (
 from app.services.invoice_service import InvoiceService
 from app.services.validation_service import ValidationService
 
+from urllib.parse import urlparse
+
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 _UI_SESSION_NONCE_KEY = "ui_session_nonce"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+# Derive root_path from BASE_URL so templates can prefix all URLs.
+# Locally (BASE_URL=http://127.0.0.1:8000) this is ""; on the server it's "/wlasny-lepszy-ksef-test".
+_root_path = urlparse(settings.base_url).path.rstrip("/")
+templates.env.globals["root_path"] = _root_path
 
 
 def _plnum(value) -> str:

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Logowanie — WŁASNY LEPSZY KSeF</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="/static/styles.css" rel="stylesheet">
+    <link href="{{ root_path }}/static/styles.css" rel="stylesheet">
     <style>
         .login-wrap {
             max-width: 360px;
@@ -56,7 +56,7 @@
         {% if error %}
         <div class="login-error">{{ error }}</div>
         {% endif %}
-        <form method="post" action="/ui/login">
+        <form method="post" action="{{ root_path }}/ui/login">
             <label for="username">Użytkownik</label>
             <input type="text" id="username" name="username" required autofocus autocomplete="username">
             <label for="password">Hasło</label>

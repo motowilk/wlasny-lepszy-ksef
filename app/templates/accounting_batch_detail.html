@@ -4,8 +4,8 @@
 <div class="page-header">
     <h1>Pakiet {{ batch.batch_code }}</h1>
     <div>
-        <a class="btn secondary" href="/ui/pakiety-ksiegowe">Powrót</a>
-        <form method="post" action="/ui/pakiety-ksiegowe/{{ batch.id }}/powiadom" class="inline-form ml-6">
+        <a class="btn secondary" href="{{ root_path }}/ui/pakiety-ksiegowe">Powrót</a>
+        <form method="post" action="{{ root_path }}/ui/pakiety-ksiegowe/{{ batch.id }}/powiadom" class="inline-form ml-6">
             <button class="btn secondary" type="submit">Powiadom</button>
         </form>
     </div>
@@ -36,7 +36,7 @@
 {% if batch.status == 'GENERATED' %}
 <div class="card mt-16">
     <h2>Ustawienia pakietu</h2>
-    <form method="post" action="/ui/pakiety-ksiegowe/{{ batch.id }}/update-settings">
+    <form method="post" action="{{ root_path }}/ui/pakiety-ksiegowe/{{ batch.id }}/update-settings">
         <div class="filter-panel">
             <div>
                 <label for="batch_type" class="label-upper">Typ</label>
@@ -107,9 +107,9 @@ document.getElementById('batch_type').addEventListener('change', function() {
                     <span class="pill pill-success">{{ item.inclusion_status }}</span>
                 </td>
                 <td>
-                    <a class="btn-detail mr-6" href="/ui/invoices/{{ item.invoice_id }}">Szczegóły</a>
+                    <a class="btn-detail mr-6" href="{{ root_path }}/ui/invoices/{{ item.invoice_id }}">Szczegóły</a>
                     {% if batch.status == 'GENERATED' %}
-                    <form method="post" action="/ui/pakiety-ksiegowe/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form d-inline">
+                    <form method="post" action="{{ root_path }}/ui/pakiety-ksiegowe/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form d-inline">
                         <button type="submit" class="btn danger btn-sm" onclick="return confirm('Usunąć fakturę z pakietu?')">Usuń z pakietu</button>
                     </form>
                     {% endif %}

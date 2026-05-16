@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <h1>{{ "Nowy kontrahent" if mode == "create" else "Edytuj: " ~ party.name_full }}</h1>
-    <a class="btn secondary" href="/ui/parties">Anuluj</a>
+    <a class="btn secondary" href="{{ root_path }}/ui/parties">Anuluj</a>
 </div>
 
 {% if saved %}
@@ -134,7 +134,7 @@
 
     <div class="form-actions" style="margin-bottom:40px">
         <button type="submit" class="btn">{{ "Utwórz kontrahenta" if mode == "create" else "Zapisz zmiany" }}</button>
-        <a class="btn secondary" href="/ui/parties">Anuluj</a>
+        <a class="btn secondary" href="{{ root_path }}/ui/parties">Anuluj</a>
     </div>
 </form>
 

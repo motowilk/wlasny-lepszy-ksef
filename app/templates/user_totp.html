@@ -24,7 +24,7 @@
     w ustawieniach użytkownika.
 </div>
 
-<a class="btn" href="/ui/users">← Wróć do listy użytkowników</a>
+<a class="btn" href="{{ root_path }}/ui/users">← Wróć do listy użytkowników</a>
 &nbsp;
-<a href="/ui/users/{{ user.id }}/edit">Edytuj użytkownika</a>
+<a href="{{ root_path }}/ui/users/{{ user.id }}/edit">Edytuj użytkownika</a>
 {% endblock %}

@@ -5,25 +5,25 @@
     <h1>Faktura {{ invoice.invoice_number }}</h1>
     <div>
         {% if invoice.direction_code == 'PURCHASE' %}
-        <a class="btn secondary" href="/ui/purchase-invoices">Powrót</a>
+        <a class="btn secondary" href="{{ root_path }}/ui/purchase-invoices">Powrót</a>
         {% else %}
-        <a class="btn secondary" href="/ui/invoices">Powrót</a>
-        <a class="btn" href="/ui/invoices/new?clone={{ invoice.id }}" class="ml-6">Powtórz fakturę</a>
+        <a class="btn secondary" href="{{ root_path }}/ui/invoices">Powrót</a>
+        <a class="btn" href="{{ root_path }}/ui/invoices/new?clone={{ invoice.id }}" class="ml-6">Powtórz fakturę</a>
         {% endif %}
-        <a class="btn secondary ml-6" href="/ui/invoices/{{ invoice.id }}/pdf">Pobierz PDF</a>
+        <a class="btn secondary ml-6" href="{{ root_path }}/ui/invoices/{{ invoice.id }}/pdf">Pobierz PDF</a>
 
         {% if invoice.direction_code == 'SALE' and not invoice.approved_at %}
-        <a class="btn secondary ml-6" href="/ui/invoices/{{ invoice.id }}/edit">Edytuj</a>
-        <form method="post" action="/ui/invoices/{{ invoice.id }}/validate-ksef" class="inline-form ml-6">
+        <a class="btn secondary ml-6" href="{{ root_path }}/ui/invoices/{{ invoice.id }}/edit">Edytuj</a>
+        <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/validate-ksef" class="inline-form ml-6">
             <button class="btn secondary" type="submit">Waliduj KSeF</button>
         </form>
-        <form method="post" action="/ui/invoices/{{ invoice.id }}/approve" class="inline-form ml-6">
+        <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/approve" class="inline-form ml-6">
             <button class="btn" type="submit">Akceptuj i wyślij do KSeF</button>
         </form>
         {% endif %}
 
         {% if invoice.direction_code == 'SALE' and invoice.approved_at and invoice.ksef_status_code == 'QUEUED' %}
-        <form method="post" action="/ui/invoices/{{ invoice.id }}/retry-ksef" class="inline-form ml-6">
+        <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/retry-ksef" class="inline-form ml-6">
             <button class="btn" type="submit">Ponów wysyłkę do KSeF</button>
         </form>
         {% endif %}
@@ -31,18 +31,18 @@
         {# PURCHASE actions: qualify, reject, add to pakiet #}
         {% if invoice.direction_code == 'PURCHASE' %}
             {% if not invoice.accounting_qualified %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/qualify" class="inline-form ml-6">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/qualify" class="inline-form ml-6">
                 <button class="btn" type="submit">Zakwalifikuj do księgowości</button>
             </form>
             {% if invoice.erp_status != 'BLOCKED' %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/reject-accounting" class="inline-form ml-6">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/reject-accounting" class="inline-form ml-6">
                 <button class="btn danger-secondary" type="submit">Odrzuć z procesu</button>
             </form>
             {% endif %}
             {% endif %}
             {% if invoice.accounting_qualified and not invoice.accounting_batch_id %}
             {% if open_batches %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6" style="display:inline-flex;align-items:center;gap:0.5rem;">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6" style="display:inline-flex;align-items:center;gap:0.5rem;">
                 <select name="batch_id" class="form-control" style="min-width:280px;">
                     <option value="">— Utwórz nowy pakiet —</option>
                     {% for b in open_batches %}
@@ -52,11 +52,11 @@
                 <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
             {% else %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
                 <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
             {% endif %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
                 <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
             </form>
             {% endif %}
@@ -65,13 +65,13 @@
         {# SALE with KSEF_ACCEPTED can also be added to pakiet #}
         {% if invoice.direction_code == 'SALE' and invoice.ksef_status_code == 'ACCEPTED' and not invoice.accounting_batch_id %}
             {% if not invoice.accounting_qualified %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/qualify" class="inline-form ml-6">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/qualify" class="inline-form ml-6">
                 <button class="btn" type="submit">Zakwalifikuj do księgowości</button>
             </form>
             {% endif %}
             {% if invoice.accounting_qualified %}
             {% if open_batches %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6" style="display:inline-flex;align-items:center;gap:0.5rem;">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6" style="display:inline-flex;align-items:center;gap:0.5rem;">
                 <select name="batch_id" class="form-control" style="min-width:280px;">
                     <option value="">— Utwórz nowy pakiet —</option>
                     {% for b in open_batches %}
@@ -81,11 +81,11 @@
                 <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
             {% else %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/dodaj-do-pakietu" class="inline-form ml-6">
                 <button class="btn" type="submit">Dodaj do pakietu</button>
             </form>
             {% endif %}
-            <form method="post" action="/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
+            <form method="post" action="{{ root_path }}/ui/invoices/{{ invoice.id }}/undo-qualify" class="inline-form ml-6">
                 <button class="btn secondary" type="submit">Cofnij kwalifikację</button>
             </form>
             {% endif %}

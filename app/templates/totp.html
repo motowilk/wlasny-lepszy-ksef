@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Weryfikacja 2FA — WŁASNY LEPSZY KSeF</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="/static/styles.css" rel="stylesheet">
+    <link href="{{ root_path }}/static/styles.css" rel="stylesheet">
     <style>
         .login-wrap {
             max-width: 360px;
@@ -61,7 +61,7 @@
         {% if error %}
         <div class="login-error">{{ error }}</div>
         {% endif %}
-        <form method="post" action="/ui/login/totp">
+        <form method="post" action="{{ root_path }}/ui/login/totp">
             <label for="code">Kod jednorazowy</label>
             <input
                 type="text"
@@ -77,7 +77,7 @@
             >
             <button type="submit">Zweryfikuj</button>
         </form>
-        <a class="back-link" href="/ui/login">← Wróć do logowania</a>
+        <a class="back-link" href="{{ root_path }}/ui/login">← Wróć do logowania</a>
     </div>
 </body>
 </html>

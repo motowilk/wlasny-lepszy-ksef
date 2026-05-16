@@ -4,31 +4,31 @@
     <meta charset="UTF-8">
     <title>{{ title or "WŁASNY LEPSZY KSeF" }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="/static/styles.css" rel="stylesheet">
+    <link href="{{ root_path }}/static/styles.css" rel="stylesheet">
 </head>
 <body>
     
 
     <header class="topbar">
         <div class="container topbar-inner">
-            <a href="/ui" class="brand">WŁASNY LEPSZY KSeF</a>
+            <a href="{{ root_path }}/ui" class="brand">WŁASNY LEPSZY KSeF</a>
 
             <nav class="nav">
-                <a href="/ui">Dashboard</a>
-                <a href="/ui/invoices">Sprzedażowe</a>
-                <a href="/ui/purchase-invoices">Zakupowe</a>
-                <a href="/ui/pakiety-ksiegowe">Pakiety</a>
-                <a href="/ui/parties">Kontrahenci</a>
+                <a href="{{ root_path }}/ui">Dashboard</a>
+                <a href="{{ root_path }}/ui/invoices">Sprzedażowe</a>
+                <a href="{{ root_path }}/ui/purchase-invoices">Zakupowe</a>
+                <a href="{{ root_path }}/ui/pakiety-ksiegowe">Pakiety</a>
+                <a href="{{ root_path }}/ui/parties">Kontrahenci</a>
                 {% if current_user and (current_user.roles | selectattr('role.role_code', 'equalto', 'admin') | list) %}
-                <a href="/ui/users">Użytkownicy</a>
-                <a href="/docs">API Docs</a>
+                <a href="{{ root_path }}/ui/users">Użytkownicy</a>
+                <a href="{{ root_path }}/docs">API Docs</a>
                 {% endif %}
             </nav>
 
             <div class="user-box">
                 {{ current_user.display_name if current_user else "Gość" }}
                 {% if current_user %}
-                <form action="/ui/logout" method="post" style="display:inline; margin-left:10px">
+                <form action="{{ root_path }}/ui/logout" method="post" style="display:inline; margin-left:10px">
                     <button type="submit" class="btn-logout">Wyloguj</button>
                 </form>
                 {% endif %}
@@ -40,9 +40,9 @@
         {% block content %}{% endblock %}
 
         <!-- background butterflies -->
-        <img src="/static/butterfly1.svg" class="bg-butterfly" style="bottom:5vh;right:3vw;width:200px;transform:rotate(-22deg);position:fixed;z-index: -1;;" alt="">
-        <img src="/static/butterfly2.svg" class="bg-butterfly" style="bottom:8vh;left:2vw;width:170px;transform:rotate(17deg);position:fixed;z-index: -1;" alt="">
-        <img src="/static/butterfly3.svg" class="bg-butterfly" style="bottom:5vh;right:25vw;width:145px;transform:rotate(-31deg);position:fixed;z-index: -1;" alt="">
+        <img src="{{ root_path }}/static/butterfly1.svg" class="bg-butterfly" style="bottom:5vh;right:3vw;width:200px;transform:rotate(-22deg);position:fixed;z-index: -1;;" alt="">
+        <img src="{{ root_path }}/static/butterfly2.svg" class="bg-butterfly" style="bottom:8vh;left:2vw;width:170px;transform:rotate(17deg);position:fixed;z-index: -1;" alt="">
+        <img src="{{ root_path }}/static/butterfly3.svg" class="bg-butterfly" style="bottom:5vh;right:25vw;width:145px;transform:rotate(-31deg);position:fixed;z-index: -1;" alt="">
     </main>
 
 {% if current_user %}

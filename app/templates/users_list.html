@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <h1>Użytkownicy</h1>
-    <a class="btn" href="/ui/users/new">+ Dodaj użytkownika</a>
+    <a class="btn" href="{{ root_path }}/ui/users/new">+ Dodaj użytkownika</a>
 </div>
 
 {% if error %}
@@ -37,9 +37,9 @@
             <td>{{ "✗" if user.is_locked else "—" }}</td>
             <td>{{ "✓" if user.totp_secret else "—" }}</td>
             <td>
-                <a class="btn-detail" href="/ui/users/{{ user.id }}/edit">Edytuj</a>
+                <a class="btn-detail" href="{{ root_path }}/ui/users/{{ user.id }}/edit">Edytuj</a>
                 {% if user.id != current_user.id %}
-                <form method="post" action="/ui/users/{{ user.id }}/delete"
+                <form method="post" action="{{ root_path }}/ui/users/{{ user.id }}/delete"
                       class="d-inline"
                       onsubmit="return confirm('Usunąć użytkownika {{ user.username }}?')">
                     <button type="submit" class="btn-link">Usuń</button>

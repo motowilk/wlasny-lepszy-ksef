@@ -77,7 +77,7 @@
 
     <div style="display:flex;gap:1rem;align-items:center">
         <button type="submit" class="btn">{{ "Utwórz użytkownika" if mode == "create" else "Zapisz zmiany" }}</button>
-        <a href="/ui/users">Anuluj</a>
+        <a href="{{ root_path }}/ui/users">Anuluj</a>
     </div>
 </form>
 
@@ -87,17 +87,17 @@
 {% if user.totp_secret %}
 <p>2FA jest <strong>włączone</strong>.</p>
 <div style="display:flex;gap:1rem;flex-wrap:wrap">
-    <form method="post" action="/ui/users/{{ user.id }}/totp-reset">
+    <form method="post" action="{{ root_path }}/ui/users/{{ user.id }}/totp-reset">
         <button type="submit" class="btn">Wygeneruj nowy kod QR</button>
     </form>
-    <form method="post" action="/ui/users/{{ user.id }}/totp-disable"
+    <form method="post" action="{{ root_path }}/ui/users/{{ user.id }}/totp-disable"
           onsubmit="return confirm('Wyłączyć 2FA dla tego użytkownika?')">
         <button type="submit" class="btn">Wyłącz 2FA</button>
     </form>
 </div>
 {% else %}
 <p>2FA jest <strong>wyłączone</strong>.</p>
-<form method="post" action="/ui/users/{{ user.id }}/totp-reset">
+<form method="post" action="{{ root_path }}/ui/users/{{ user.id }}/totp-reset">
     <button type="submit" class="btn">Włącz 2FA (wygeneruj kod QR)</button>
 </form>
 {% endif %}

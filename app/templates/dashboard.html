@@ -71,7 +71,7 @@
                     <span class="pill {{ status_pill_class('erp', item.erp_status) }}">{{ status_label('erp', item.erp_status) }}</span>
                 </td>
                 <td>{{ item.gross_total|plnum }}</td>
-                <td><a class="btn-detail" href="/ui/invoices/{{ item.id }}">Szczegóły</a></td>
+                <td><a class="btn-detail" href="{{ root_path }}/ui/invoices/{{ item.id }}">Szczegóły</a></td>
             </tr>
         {% endfor %}
         </tbody>

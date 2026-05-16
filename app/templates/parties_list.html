@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
     <h1>Kontrahenci</h1>
-    <a class="btn" href="/ui/parties/new">+ Nowy kontrahent</a>
+    <a class="btn" href="{{ root_path }}/ui/parties/new">+ Nowy kontrahent</a>
 </div>
 
 {% if success %}
@@ -49,15 +49,15 @@
                 </td>
                 <td>
                     <div style="display:flex;gap:6px;white-space:nowrap">
-                        <a class="btn secondary btn-sm" href="/ui/parties/{{ p.id }}/edit">Edytuj</a>
-                        <form method="post" action="/ui/parties/{{ p.id }}/delete" style="margin:0" onsubmit="return confirm('{% if p.is_active %}Czy na pewno chcesz usunąć/dezaktywować tego kontrahenta?{% else %}Kontrahent jest już nieaktywny. Czy na pewno chcesz kontynuować?{% endif %}')">
+                        <a class="btn secondary btn-sm" href="{{ root_path }}/ui/parties/{{ p.id }}/edit">Edytuj</a>
+                        <form method="post" action="{{ root_path }}/ui/parties/{{ p.id }}/delete" style="margin:0" onsubmit="return confirm('{% if p.is_active %}Czy na pewno chcesz usunąć/dezaktywować tego kontrahenta?{% else %}Kontrahent jest już nieaktywny. Czy na pewno chcesz kontynuować?{% endif %}')">
                             <button type="submit" class="btn danger-secondary btn-sm">Usuń</button>
                         </form>
                     </div>
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="text-center" style="color:#aaa;padding:2rem">Brak kontrahentów. <a href="/ui/parties/new">Dodaj pierwszego.</a></td></tr>
+            <tr><td colspan="7" class="text-center" style="color:#aaa;padding:2rem">Brak kontrahentów. <a href="{{ root_path }}/ui/parties/new">Dodaj pierwszego.</a></td></tr>
             {% endfor %}
         </tbody>
     </table>

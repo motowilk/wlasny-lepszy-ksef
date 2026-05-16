@@ -4,7 +4,7 @@
 <h1>Faktury zakupowe</h1>
 
 <section class="card mb-16">
-    <form method="post" action="/ui/purchase-invoices/fetch-ksef" class="fetch-form">
+    <form method="post" action="{{ root_path }}/ui/purchase-invoices/fetch-ksef" class="fetch-form">
         <div>
             <label class="label-form">Data od</label><br>
             <input type="date" name="date_from" required class="fetch-form-input">
@@ -98,7 +98,7 @@
                 </td>
                 <td>{{ item.accounting_batch_id or '-' }}</td>
                 <td>{{ item.gross_total|plnum }}</td>
-                <td><a class="btn-detail" href="/ui/invoices/{{ item.id }}">Szczegóły</a></td>
+                <td><a class="btn-detail" href="{{ root_path }}/ui/invoices/{{ item.id }}">Szczegóły</a></td>
             </tr>
         {% endfor %}
         </tbody>

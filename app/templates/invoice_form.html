@@ -14,7 +14,7 @@
 </div>
 {% endif %}
 
-<form method="post" action="{% if mode == 'edit' %}/ui/invoices/{{ invoice_id }}/edit{% else %}/ui/invoices/new{% endif %}" id="invoice-form">
+<form method="post" action="{% if mode == 'edit' %}{{ root_path }}/ui/invoices/{{ invoice_id }}/edit{% else %}{{ root_path }}/ui/invoices/new{% endif %}" id="invoice-form">
 
     <!-- ═══ NAGŁÓWEK FAKTURY ═══ -->
     <section class="card">
