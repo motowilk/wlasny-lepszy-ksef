@@ -1324,6 +1324,28 @@ def invoice_add_to_batch(
     return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
+@router.post("/ui/invoices/{invoice_id}/powiadom")
+def invoice_send_notification(
+    invoice_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "owner")),
+):
+    from urllib.parse import urlencode
+    from app.services.notification_service import NotificationService
+
+    try:
+        notification = NotificationService.create_invoice_notification(db, invoice_id)
+        notification = NotificationService.send_notification(db, notification.id)
+        if notification.status == "SENT":
+            params = urlencode({"action_success": f"Wysłano powiadomienie na {notification.recipient}."})
+        else:
+            params = urlencode({"action_error": notification.error_message or "Wysyłka nie powiodła się."})
+    except (ValueError, RuntimeError) as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+
+
 @router.post("/ui/invoices/{invoice_id}/approve")
 def invoice_approve(
     invoice_id: int,
@@ -1912,6 +1934,79 @@ def batch_update_settings(
         )
         params = urlencode({"action_success": "Ustawienia pakietu zostały zapisane."})
     except ValueError as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
+
+
+@router.post("/ui/pakiety-ksiegowe/{batch_id}/powiadom")
+def batch_send_test_notification(
+    batch_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "owner")),
+):
+    from urllib.parse import urlencode
+    from app.adapters.notification.email import EmailNotificationAdapter
+    from app.core.config import settings
+    from app.db.models import InvoicePayload
+
+    batch = db.get(AccountingBatch, batch_id)
+    if not batch:
+        params = urlencode({"action_error": "Pakiet nie istnieje."})
+        return RedirectResponse(url=f"/ui/pakiety-ksiegowe?{params}", status_code=303)
+
+    # Build batch summary
+    batch_invoices = db.execute(
+        select(AccountingBatchInvoice)
+        .where(AccountingBatchInvoice.batch_id == batch_id)
+    ).scalars().all()
+
+    lines = [
+        f"Pakiet: {batch.batch_code}",
+        f"Typ: {batch.batch_type}",
+        f"Okres: {batch.period_year}-{batch.period_month:02d}",
+        f"Status: {batch.status}",
+        f"Liczba faktur: {batch.item_count}",
+        f"Zaplanowana wysyłka: {batch.send_at.strftime('%Y-%m-%d %H:%M') if batch.send_at else '—'}",
+        "",
+        "Faktury:",
+    ]
+
+    attachments = []
+    for bi in batch_invoices:
+        inv = db.get(Invoice, bi.invoice_id)
+        if inv:
+            inv_url = f"{settings.base_url}/ui/invoices/{inv.id}"
+            lines.append(
+                f"  • {inv.invoice_number} | {inv.direction_code} | {inv.issue_date} | brutto {inv.gross_total}"
+            )
+            lines.append(f"    Link: {inv_url}")
+
+            # Attach XML if available
+            xml_payload = db.execute(
+                select(InvoicePayload)
+                .where(
+                    InvoicePayload.invoice_id == inv.id,
+                    InvoicePayload.payload_type_code.in_(["KSEF_XML", "KSEF_XML_RECEIVED"]),
+                )
+                .order_by(InvoicePayload.id.desc())
+            ).scalars().first()
+            if xml_payload:
+                safe_number = inv.invoice_number.replace("/", "_")
+                attachments.append((f"{safe_number}.xml", xml_payload.content, "xml"))
+
+    body = "\n".join(lines)
+    recipient = settings.default_notification_email
+
+    try:
+        EmailNotificationAdapter().send(
+            recipient=recipient,
+            subject=f"[TEST] Pakiet {batch.batch_code} — podsumowanie",
+            body=body,
+            attachments=attachments or None,
+        )
+        params = urlencode({"action_success": f"Wysłano powiadomienie testowe na {recipient}."})
+    except Exception as exc:
         params = urlencode({"action_error": str(exc)})
 
     return RedirectResponse(url=f"/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)

@@ -14,7 +14,11 @@ class EmailNotificationAdapter:
         if bool(settings.smtp_user) != bool(settings.smtp_password):
             raise RuntimeError("SMTP_USER and SMTP_PASSWORD must be configured together.")
 
-    def send(self, recipient: str, subject: str, body: str) -> None:
+    def send(self, recipient: str, subject: str, body: str, attachments: list[tuple[str, str, str]] | None = None) -> None:
+        """Send an email.
+
+        attachments: optional list of (filename, content, mime_subtype) tuples.
+        """
         self._validate_settings()
 
         msg = EmailMessage()
@@ -22,6 +26,15 @@ class EmailNotificationAdapter:
         msg["To"] = recipient
         msg["Subject"] = subject
         msg.set_content(body)
+
+        if attachments:
+            for filename, content, mime_subtype in attachments:
+                msg.add_attachment(
+                    content.encode("utf-8"),
+                    maintype="application",
+                    subtype=mime_subtype,
+                    filename=filename,
+                )
 
         if settings.smtp_port == 465:
             # Implicit TLS (SMTPS)

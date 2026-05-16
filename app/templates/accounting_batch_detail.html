@@ -3,7 +3,12 @@
 {% block content %}
 <div class="page-header">
     <h1>Pakiet {{ batch.batch_code }}</h1>
-    <a class="btn secondary" href="/ui/pakiety-ksiegowe">Powrót</a>
+    <div>
+        <a class="btn secondary" href="/ui/pakiety-ksiegowe">Powrót</a>
+        <form method="post" action="/ui/pakiety-ksiegowe/{{ batch.id }}/powiadom" class="inline-form ml-6">
+            <button class="btn secondary" type="submit">Powiadom</button>
+        </form>
+    </div>
 </div>
 
 {% if action_success %}
