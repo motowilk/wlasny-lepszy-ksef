@@ -233,7 +233,7 @@
         btn.textContent = '⏳';
         msgEl.style.display = 'none';
 
-        fetch('/ui/parties/lookup-nip?nip=' + nip)
+        fetch('{{ root_path }}/ui/parties/lookup-nip?nip=' + nip)
             .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
             .then(function(res) {
                 btn.disabled = false;
@@ -325,7 +325,7 @@
         bankBtn.textContent = '⏳';
         bankMsg.style.display = 'none';
 
-        fetch('/ui/parties/verify-bank-account?account=' + acc)
+        fetch('{{ root_path }}/ui/parties/verify-bank-account?account=' + acc)
             .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
             .then(function(res) {
                 bankBtn.disabled = false;

@@ -264,7 +264,7 @@ def ui_require_roles(*role_codes: str):
 
 @router.get("/")
 def root_redirect() -> RedirectResponse:
-    return RedirectResponse(url="/ui", status_code=302)
+    return RedirectResponse(url=f"{_root_path}/ui", status_code=302)
 
 
 @router.get("/ui/login")
@@ -303,7 +303,7 @@ def login_submit(
     # the TOTP verification step instead of creating the full session immediately.
     if user.totp_secret:
         pending = create_totp_pending_token(user.id, settings.secret_key)
-        resp = RedirectResponse(url="/ui/login/totp", status_code=303)
+        resp = RedirectResponse(url=f"{_root_path}/ui/login/totp", status_code=303)
         resp.set_cookie(
             "totp_pending",
             pending,
@@ -323,7 +323,7 @@ def login_submit(
     )
 
     token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
-    resp = RedirectResponse(url="/ui", status_code=303)
+    resp = RedirectResponse(url=f"{_root_path}/ui", status_code=303)
     resp.set_cookie(
         "session",
         token,
@@ -341,7 +341,7 @@ def totp_form(
     totp_pending: str | None = Cookie(default=None),
 ):
     if not totp_pending or decode_totp_pending_token(totp_pending, settings.secret_key) is None:
-        return RedirectResponse(url="/ui/login", status_code=302)
+        return RedirectResponse(url=f"{_root_path}/ui/login", status_code=302)
     return templates.TemplateResponse("totp.html", {"request": request})
 
 
@@ -358,11 +358,11 @@ def totp_submit(
         decode_totp_pending_token(totp_pending, settings.secret_key) if totp_pending else None
     )
     if user_id is None:
-        return RedirectResponse(url="/ui/login", status_code=302)
+        return RedirectResponse(url=f"{_root_path}/ui/login", status_code=302)
 
     user = db.get(AppUser, user_id)
     if not user or not user.is_active or user.is_locked:
-        return RedirectResponse(url="/ui/login", status_code=302)
+        return RedirectResponse(url=f"{_root_path}/ui/login", status_code=302)
 
     if not pyotp.TOTP(user.totp_secret).verify(code.strip()):
         resp = templates.TemplateResponse(
@@ -381,7 +381,7 @@ def totp_submit(
     )
 
     session_token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
-    resp = RedirectResponse(url="/ui", status_code=303)
+    resp = RedirectResponse(url=f"{_root_path}/ui", status_code=303)
     resp.set_cookie(
         "session",
         session_token,
@@ -408,7 +408,7 @@ def logout(
         _rotate_user_session_nonce(user)
         db.commit()
 
-    resp = RedirectResponse(url="/ui/login", status_code=302)
+    resp = RedirectResponse(url=f"{_root_path}/ui/login", status_code=302)
     resp.delete_cookie("session", secure=_use_secure_cookies())
     return resp
 
@@ -792,7 +792,7 @@ async def invoice_create_submit(
     except (InvalidOperation, ValidationError, ValueError) as exc:
         error_msg = str(exc) if str(exc) else "Nieprawidłowe dane formularza faktury."
     else:
-        return RedirectResponse(url=f"/ui/invoices/{invoice.id}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice.id}", status_code=303)
 
     # Re-render form with error and previously entered data
     all_parties = list(
@@ -868,9 +868,9 @@ def invoice_edit_form(
         .scalar_one_or_none()
     )
     if not invoice:
-        return RedirectResponse(url=f"/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
     if invoice.approved_at is not None:
-        return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}", status_code=303)
 
     all_parties = list(
         db.execute(select(Party).where(Party.is_active.is_(True)).order_by(Party.name_full))
@@ -1075,7 +1075,7 @@ async def invoice_edit_submit(
     except (InvalidOperation, ValidationError, ValueError) as exc:
         error_msg = str(exc) if str(exc) else "Nieprawidłowe dane formularza faktury."
     else:
-        return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}", status_code=303)
 
     # Re-render form with error and previously entered data
     all_parties = list(
@@ -1158,7 +1158,7 @@ def invoice_detail(
     )
 
     if not invoice:
-        return RedirectResponse(url=f"/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
 
     # Fetch open batches for the "add to batch" choice dialog
     open_batches = []
@@ -1203,7 +1203,7 @@ def invoice_pdf(
     )
 
     if not invoice:
-        return RedirectResponse(url=f"/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/invoices?error={_url_quote('Faktura nie istnieje.')}", status_code=303)
 
     pdf_bytes = generate_invoice_pdf(invoice)
     filename = f"faktura_{invoice.invoice_number.replace('/', '_')}.pdf"
@@ -1236,7 +1236,7 @@ def invoice_qualify(
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/reject-accounting")
@@ -1260,7 +1260,7 @@ def invoice_reject_accounting(
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/undo-qualify")
@@ -1302,7 +1302,7 @@ def invoice_undo_qualify(
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/dodaj-do-pakietu")
@@ -1328,7 +1328,7 @@ def invoice_add_to_batch(
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/powiadom")
@@ -1350,7 +1350,7 @@ def invoice_send_notification(
     except (ValueError, RuntimeError) as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/approve")
@@ -1386,7 +1386,7 @@ def invoice_approve(
 
     from urllib.parse import urlencode
     params = urlencode({"action_success": "Faktura zaakceptowana i wysłana do KSeF."})
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/retry-ksef")
@@ -1418,7 +1418,7 @@ def invoice_retry_ksef(
         )
 
     params = urlencode({"action_success": "Faktura wysłana do KSeF."})
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/validate-ksef")
@@ -1671,7 +1671,7 @@ async def party_create_submit(
     )
     db.add(party)
     db.commit()
-    return RedirectResponse(url=f"/ui/parties/{party.id}/edit?success=1", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/parties/{party.id}/edit?success=1", status_code=303)
 
 
 @router.get("/ui/parties/{party_id}/edit")
@@ -1684,7 +1684,7 @@ def party_edit_form(
 ):
     party = db.get(Party, party_id)
     if not party:
-        return RedirectResponse(url=f"/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
     return templates.TemplateResponse(
         "party_form.html",
         {
@@ -1708,7 +1708,7 @@ async def party_edit_submit(
 ):
     party = db.get(Party, party_id)
     if not party:
-        return RedirectResponse(url=f"/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
 
     form = await request.form()
 
@@ -1745,7 +1745,7 @@ async def party_edit_submit(
     party.is_active = bool(form.get("is_active"))
 
     db.commit()
-    return RedirectResponse(url=f"/ui/parties/{party_id}/edit?success=1", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/parties/{party_id}/edit?success=1", status_code=303)
 
 
 @router.post("/ui/parties/{party_id}/delete")
@@ -1757,7 +1757,7 @@ def party_delete(
 ):
     party = db.get(Party, party_id)
     if not party:
-        return RedirectResponse(url=f"/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/parties?error={_url_quote('Kontrahent nie istnieje.')}", status_code=303)
 
     used_on_invoice = db.execute(
         select(InvoiceParty.id).where(InvoiceParty.party_id == party_id).limit(1)
@@ -1873,7 +1873,7 @@ def accounting_batch_detail(
 ):
     batch = db.get(AccountingBatch, batch_id)
     if not batch:
-        return RedirectResponse(url=f"/ui/pakiety-ksiegowe?error={_url_quote('Pakiet nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/pakiety-ksiegowe?error={_url_quote('Pakiet nie istnieje.')}", status_code=303)
 
     items = list(
         db.execute(
@@ -1948,14 +1948,14 @@ def batch_remove_invoice(
             db.commit()
             from urllib.parse import urlencode
             params = urlencode({"batch_deleted": "1"})
-            return RedirectResponse(url=f"/ui/pakiety-ksiegowe", status_code=303)
+            return RedirectResponse(url=f"{_root_path}/ui/pakiety-ksiegowe", status_code=303)
 
         db.commit()
         params = urlencode({"action_success": f"Usunięto fakturę #{invoice_id} z pakietu."})
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
 
 
 @router.post("/ui/pakiety-ksiegowe/{batch_id}/update-settings")
@@ -1984,7 +1984,7 @@ def batch_update_settings(
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
 
 
 @router.post("/ui/pakiety-ksiegowe/{batch_id}/powiadom")
@@ -2001,7 +2001,7 @@ def batch_send_test_notification(
     batch = db.get(AccountingBatch, batch_id)
     if not batch:
         params = urlencode({"action_error": "Pakiet nie istnieje."})
-        return RedirectResponse(url=f"/ui/pakiety-ksiegowe?{params}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/pakiety-ksiegowe?{params}", status_code=303)
 
     # Build batch summary
     batch_invoices = db.execute(
@@ -2057,7 +2057,7 @@ def batch_send_test_notification(
     except Exception as exc:
         params = urlencode({"action_error": str(exc)})
 
-    return RedirectResponse(url=f"/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
 
 
 @router.get("/ui/notifications")
@@ -2192,8 +2192,8 @@ def user_create_submit(
     db.commit()
 
     if totp_secret:
-        return RedirectResponse(url=f"/ui/users/{new_user.id}/totp-setup", status_code=303)
-    return RedirectResponse(url="/ui/users", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/users/{new_user.id}/totp-setup", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/users", status_code=303)
 
 
 @router.get("/ui/users/{user_id}/totp-setup")
@@ -2209,7 +2209,7 @@ def user_totp_setup(
 
     user = db.get(AppUser, user_id)
     if not user or not user.totp_secret:
-        return RedirectResponse(url="/ui/users", status_code=302)
+        return RedirectResponse(url=f"{_root_path}/ui/users", status_code=302)
 
     uri = pyotp.totp.TOTP(user.totp_secret).provisioning_uri(
         name=user.username, issuer_name="KSeF ERP"
@@ -2255,7 +2255,7 @@ def user_edit_form(
         .scalar_one_or_none()
     )
     if not user:
-        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     all_roles = db.execute(select(AppRole).order_by(AppRole.role_code)).scalars().all()
     user_role_codes = {item.role.role_code for item in user.roles}
@@ -2296,7 +2296,7 @@ def user_edit_submit(
         .scalar_one_or_none()
     )
     if not user:
-        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     all_roles = db.execute(select(AppRole).order_by(AppRole.role_code)).scalars().all()
 
@@ -2329,7 +2329,7 @@ def user_edit_submit(
             db.add(AppUserRole(user_id=user.id, role_id=role.id))
 
     db.commit()
-    return RedirectResponse(url="/ui/users", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/users", status_code=303)
 
 
 @router.post("/ui/users/{user_id}/totp-reset")
@@ -2342,11 +2342,11 @@ def user_totp_reset(
 
     user = db.get(AppUser, user_id)
     if not user:
-        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     user.totp_secret = pyotp.random_base32()
     db.commit()
-    return RedirectResponse(url=f"/ui/users/{user_id}/totp-setup", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/users/{user_id}/totp-setup", status_code=303)
 
 
 @router.post("/ui/users/{user_id}/totp-disable")
@@ -2357,11 +2357,11 @@ def user_totp_disable(
 ):
     user = db.get(AppUser, user_id)
     if not user:
-        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     user.totp_secret = None
     db.commit()
-    return RedirectResponse(url=f"/ui/users/{user_id}/edit", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/users/{user_id}/edit", status_code=303)
 
 
 @router.post("/ui/users/{user_id}/delete")
@@ -2371,13 +2371,13 @@ def user_delete(
     current_user: AppUser = Depends(ui_require_roles("admin")),
 ):
     if user_id == current_user.id:
-        return RedirectResponse(url=f"/ui/users?error={_url_quote('Nie możesz usunąć własnego konta.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Nie możesz usunąć własnego konta.')}", status_code=303)
 
     user = db.get(AppUser, user_id)
     if not user:
-        return RedirectResponse(url=f"/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
+        return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     db.execute(sql_delete(AppUserRole).where(AppUserRole.user_id == user_id))
     db.delete(user)
     db.commit()
-    return RedirectResponse(url="/ui/users", status_code=303)
+    return RedirectResponse(url=f"{_root_path}/ui/users", status_code=303)

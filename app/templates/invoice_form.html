@@ -283,7 +283,7 @@ function onSellerChanged() {
 
 function resolveIbanFields(iban) {
     if (!iban || iban.length < 15) return;
-    fetch('/ui/iban-lookup?iban=' + encodeURIComponent(iban))
+    fetch('{{ root_path }}/ui/iban-lookup?iban=' + encodeURIComponent(iban))
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.swift) document.getElementById('payment_swift').value = d.swift;

@@ -44,13 +44,16 @@ app.include_router(ui_router)
 
 @app.exception_handler(UIAuthRequired)
 async def ui_auth_required_handler(request: Request, exc: UIAuthRequired) -> RedirectResponse:
-    return RedirectResponse(url="/ui/login", status_code=302)
+    from urllib.parse import urlparse as _urlparse
+    _rp = _urlparse(settings.base_url).path.rstrip("/")
+    return RedirectResponse(url=f"{_rp}/ui/login", status_code=302)
 
 
 @app.exception_handler(UIForbidden)
 async def ui_forbidden_handler(request: Request, exc: UIForbidden) -> RedirectResponse:
-    from urllib.parse import quote
-    return RedirectResponse(url=f"/ui?error={quote(exc.detail)}", status_code=303)
+    from urllib.parse import quote, urlparse as _urlparse
+    _rp = _urlparse(settings.base_url).path.rstrip("/")
+    return RedirectResponse(url=f"{_rp}/ui?error={quote(exc.detail)}", status_code=303)
 
 
 @app.get("/health", tags=["system"])
