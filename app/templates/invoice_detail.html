@@ -22,6 +22,12 @@
         </form>
         {% endif %}
 
+        {% if invoice.direction_code == 'SALE' and invoice.approved_at and invoice.ksef_status_code == 'QUEUED' %}
+        <form method="post" action="/ui/invoices/{{ invoice.id }}/retry-ksef" class="inline-form ml-6">
+            <button class="btn" type="submit">Ponów wysyłkę do KSeF</button>
+        </form>
+        {% endif %}
+
         {# PURCHASE actions: qualify, reject, add to pakiet #}
         {% if invoice.direction_code == 'PURCHASE' %}
             {% if not invoice.accounting_qualified %}

@@ -266,10 +266,11 @@ class InvoiceService:
             related_entity_type="INVOICE",
             related_entity_id=str(invoice.id),
             job_type="SEND_TO_KSEF",
-            status="NEW",
+            status="PROCESSING",
             priority=100,
-            attempts=0,
+            attempts=1,
             max_attempts=5,
+            started_at=datetime.now(tz=timezone.utc),
             request_payload={"invoice_id": invoice.id},
         )
         db.add(job)
@@ -281,10 +282,174 @@ class InvoiceService:
                 event_status="SUCCESS",
                 actor_type="USER",
                 actor_id=str(actor_id or payload.approved_by_user_id),
-                message="Faktura zaakceptowana i dodana do kolejki KSeF.",
+                message="Faktura zaakceptowana — wysyłka do KSeF.",
                 details={"job_type": "SEND_TO_KSEF"},
             )
         )
+
+        db.flush()
+
+        from app.services.ksef_service import KsefService
+        try:
+            KsefService.process_send_to_ksef_job(db, job)
+        except Exception as exc:
+            db.rollback()
+
+            # Re-fetch after rollback — the flushed approval data is gone
+            invoice = InvoiceService.get_invoice(db, invoice_id)
+            invoice.approved_by = payload.approved_by_user_id
+            invoice.approved_at = datetime.now(tz=timezone.utc)
+            invoice.erp_status = "APPROVED"
+            invoice.review_status = "APPROVED"
+            invoice.ksef_status_code = "QUEUED"
+            invoice.xml_sha256 = xml_hash
+            invoice.notification_status = "PENDING"
+            invoice.notification_channel = "EMAIL"
+
+            # Persist the XML payload again (lost in rollback)
+            db.add(
+                InvoicePayload(
+                    invoice_id=invoice.id,
+                    payload_type_code="KSEF_XML",
+                    content_format="XML",
+                    content=xml_content,
+                    content_sha256=xml_hash,
+                    api_endpoint="/api/online/Send/Invoices",
+                    transport_metadata={"schema": "FA(3)", "version": "1-0E"},
+                )
+            )
+
+            failed_job = IntegrationJob(
+                job_uuid=str(uuid.uuid4()),
+                tenant_id=invoice.tenant_id,
+                invoice_id=invoice.id,
+                related_entity_type="INVOICE",
+                related_entity_id=str(invoice.id),
+                job_type="SEND_TO_KSEF",
+                status="FAILED",
+                priority=100,
+                attempts=1,
+                max_attempts=5,
+                started_at=datetime.now(tz=timezone.utc),
+                finished_at=datetime.now(tz=timezone.utc),
+                last_error_message=str(exc),
+                request_payload={"invoice_id": invoice.id},
+            )
+            db.add(failed_job)
+
+            db.add(
+                InvoiceEvent(
+                    invoice_id=invoice.id,
+                    event_type="KSEF_SEND_FAILED",
+                    event_status="FAILURE",
+                    actor_type="SYSTEM",
+                    actor_id="approve_invoice",
+                    message=f"Wysyłka do KSeF nie powiodła się: {exc}",
+                    details={"error": str(exc)},
+                )
+            )
+
+            db.commit()
+            raise RuntimeError(f"Wysyłka do KSeF nie powiodła się: {exc}") from exc
+
+        job.status = "DONE"
+        job.finished_at = datetime.now(tz=timezone.utc)
+
+        db.commit()
+        db.refresh(invoice)
+        return InvoiceService.get_invoice(db, invoice.id)
+
+    @staticmethod
+    def retry_ksef_send(
+        db: Session,
+        invoice_id: int,
+        actor_id: str | None = None,
+    ) -> Invoice:
+        invoice = InvoiceService.get_invoice(db, invoice_id)
+
+        if not invoice.approved_at:
+            raise ValueError("Faktura nie jest zaakceptowana.")
+
+        if invoice.ksef_status_code != "QUEUED":
+            raise ValueError(
+                f"Ponowna wysyłka możliwa tylko dla statusu 'W kolejce' "
+                f"(obecny: {invoice.ksef_status_code})."
+            )
+
+        xml_payload = db.scalars(
+            select(InvoicePayload)
+            .where(
+                InvoicePayload.invoice_id == invoice.id,
+                InvoicePayload.payload_type_code == "KSEF_XML",
+            )
+            .order_by(InvoicePayload.id.desc())
+            .limit(1)
+        ).first()
+        if not xml_payload:
+            raise ValueError("Brak payloadu XML dla faktury.")
+
+        job = IntegrationJob(
+            job_uuid=str(uuid.uuid4()),
+            tenant_id=invoice.tenant_id,
+            invoice_id=invoice.id,
+            related_entity_type="INVOICE",
+            related_entity_id=str(invoice.id),
+            job_type="SEND_TO_KSEF",
+            status="PROCESSING",
+            priority=100,
+            attempts=1,
+            max_attempts=5,
+            started_at=datetime.now(tz=timezone.utc),
+            request_payload={"invoice_id": invoice.id},
+        )
+        db.add(job)
+        db.flush()
+
+        from app.services.ksef_service import KsefService
+        try:
+            KsefService.process_send_to_ksef_job(db, job)
+        except Exception as exc:
+            db.rollback()
+
+            invoice = InvoiceService.get_invoice(db, invoice_id)
+            invoice.ksef_status_code = "QUEUED"
+            invoice.erp_status = "APPROVED"
+
+            failed_job = IntegrationJob(
+                job_uuid=str(uuid.uuid4()),
+                tenant_id=invoice.tenant_id,
+                invoice_id=invoice.id,
+                related_entity_type="INVOICE",
+                related_entity_id=str(invoice.id),
+                job_type="SEND_TO_KSEF",
+                status="FAILED",
+                priority=100,
+                attempts=1,
+                max_attempts=5,
+                started_at=datetime.now(tz=timezone.utc),
+                finished_at=datetime.now(tz=timezone.utc),
+                last_error_message=str(exc),
+                request_payload={"invoice_id": invoice.id},
+            )
+            db.add(failed_job)
+
+            db.add(
+                InvoiceEvent(
+                    invoice_id=invoice.id,
+                    event_type="KSEF_SEND_FAILED",
+                    event_status="FAILURE",
+                    actor_type="USER",
+                    actor_id=actor_id or "unknown",
+                    message=f"Ponowna wysyłka do KSeF nie powiodła się: {exc}",
+                    details={"error": str(exc)},
+                )
+            )
+
+            db.commit()
+            raise RuntimeError(f"Wysyłka do KSeF nie powiodła się: {exc}") from exc
+
+        job.status = "DONE"
+        job.finished_at = datetime.now(tz=timezone.utc)
 
         db.commit()
         db.refresh(invoice)

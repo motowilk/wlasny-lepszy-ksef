@@ -45,9 +45,11 @@ class RealKsefClient(BaseKsefClient):
         self.base_url = self.settings.ksef_api_url.rstrip("/")
         self._access_token: str | None = None
         self._token_valid_until: datetime | None = None
-        # Cache the MF public key to avoid fetching on every call
-        self._cached_public_key_der: bytes | None = None
-        self._cached_public_key_id: str | None = None
+        # Cache MF public keys (separate keys for token auth vs session encryption)
+        self._cached_token_key_der: bytes | None = None
+        self._cached_token_key_id: str | None = None
+        self._cached_session_key_der: bytes | None = None
+        self._cached_session_key_id: str | None = None
 
     # ------------------------------------------------------------------ #
     # Public interface (BaseKsefClient)                                    #
@@ -60,13 +62,33 @@ class RealKsefClient(BaseKsefClient):
 
         Returns {"invoice_ref": str, "session_ref": str}.
         The caller must separately poll get_invoice_status() for ksefNumber.
+
+        If the session open fails due to a revoked/unknown public key,
+        the cached key is invalidated and the operation is retried once.
         """
         self._ensure_authenticated()
 
+        try:
+            return self._send_invoice_inner(xml_content)
+        except RuntimeError as exc:
+            if "nie jest wspierany" in str(exc) or "nieznany" in str(exc):
+                self._invalidate_cached_key()
+                return self._send_invoice_inner(xml_content)
+            raise
+
+    def _invalidate_cached_key(self) -> None:
+        """Clear cached MF public keys so they're re-fetched on next use."""
+        self._cached_token_key_der = None
+        self._cached_token_key_id = None
+        self._cached_session_key_der = None
+        self._cached_session_key_id = None
+
+    def _send_invoice_inner(self, xml_content: str) -> dict:
+        """Core send logic — separated to allow retry on key rotation."""
         sym_key = os.urandom(32)  # AES-256 key
         iv = os.urandom(16)       # AES-256-CBC IV
 
-        enc_sym_key, public_key_id = self._encrypt_with_mf_key(sym_key)
+        enc_sym_key, public_key_id = self._encrypt_with_session_key(sym_key)
         session_ref = self._open_session(enc_sym_key, iv, public_key_id)
 
         xml_bytes = xml_content.encode("utf-8")
@@ -300,32 +322,40 @@ class RealKsefClient(BaseKsefClient):
     # Crypto helpers                                                        #
     # ------------------------------------------------------------------ #
 
-    def _get_mf_public_key(self) -> tuple[bytes, str]:
-        """Fetch and cache the MF certificate used for KsefTokenEncryption."""
-        if self._cached_public_key_der and self._cached_public_key_id:
-            return self._cached_public_key_der, self._cached_public_key_id
-
+    def _get_mf_key_by_usage(self, usage: str) -> tuple[bytes, str]:
+        """Fetch a MF certificate by usage type from the public-key-certificates endpoint."""
         certs = self._get_anon(f"{self.base_url}/security/public-key-certificates")
         for cert in certs:
-            if "KsefTokenEncryption" in cert.get("usage", []):
+            if usage in cert.get("usage", []):
                 der_bytes = base64.b64decode(cert["certificate"])
-                self._cached_public_key_der = der_bytes
-                self._cached_public_key_id = cert["publicKeyId"]
                 return der_bytes, cert["publicKeyId"]
-
         raise RuntimeError(
-            "MF public key with KsefTokenEncryption usage not found in /security/public-key-certificates"
+            f"MF public key with {usage} usage not found in /security/public-key-certificates"
         )
 
-    def _encrypt_with_mf_key(self, data: bytes) -> tuple[str, str]:
-        """
-        Encrypt arbitrary bytes with the MF RSA public key using OAEP + SHA-256.
-        Returns (base64_ciphertext, publicKeyId).
-        """
-        der_bytes, pub_key_id = self._get_mf_public_key()
+    def _get_mf_token_key(self) -> tuple[bytes, str]:
+        """Fetch and cache the MF certificate used for KsefTokenEncryption (auth)."""
+        if self._cached_token_key_der and self._cached_token_key_id:
+            return self._cached_token_key_der, self._cached_token_key_id
+        der, kid = self._get_mf_key_by_usage("KsefTokenEncryption")
+        self._cached_token_key_der = der
+        self._cached_token_key_id = kid
+        return der, kid
+
+    def _get_mf_session_key(self) -> tuple[bytes, str]:
+        """Fetch and cache the MF certificate used for SymmetricKeyEncryption (sessions)."""
+        if self._cached_session_key_der and self._cached_session_key_id:
+            return self._cached_session_key_der, self._cached_session_key_id
+        der, kid = self._get_mf_key_by_usage("SymmetricKeyEncryption")
+        self._cached_session_key_der = der
+        self._cached_session_key_id = kid
+        return der, kid
+
+    def _rsa_encrypt(self, data: bytes, der_bytes: bytes) -> bytes:
+        """RSA-OAEP SHA-256 encrypt data with a DER-encoded X.509 certificate."""
         cert = load_der_x509_certificate(der_bytes)
         public_key = cert.public_key()
-        ciphertext = public_key.encrypt(
+        return public_key.encrypt(
             data,
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -333,6 +363,23 @@ class RealKsefClient(BaseKsefClient):
                 label=None,
             ),
         )
+
+    def _encrypt_with_mf_key(self, data: bytes) -> tuple[str, str]:
+        """
+        Encrypt arbitrary bytes with the KsefTokenEncryption key (for auth).
+        Returns (base64_ciphertext, publicKeyId).
+        """
+        der_bytes, pub_key_id = self._get_mf_token_key()
+        ciphertext = self._rsa_encrypt(data, der_bytes)
+        return base64.b64encode(ciphertext).decode(), pub_key_id
+
+    def _encrypt_with_session_key(self, data: bytes) -> tuple[str, str]:
+        """
+        Encrypt arbitrary bytes with the SymmetricKeyEncryption key (for sessions).
+        Returns (base64_ciphertext, publicKeyId).
+        """
+        der_bytes, pub_key_id = self._get_mf_session_key()
+        ciphertext = self._rsa_encrypt(data, der_bytes)
         return base64.b64encode(ciphertext).decode(), pub_key_id
 
     @staticmethod
@@ -357,13 +404,21 @@ class RealKsefClient(BaseKsefClient):
     def _post(self, url: str, body: dict) -> dict:
         with httpx.Client(timeout=self._HTTP_TIMEOUT) as client:
             resp = client.post(url, json=body, headers=self._auth_headers())
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                detail = resp.text[:500] if resp.text else ""
+                raise RuntimeError(
+                    f"KSeF API {resp.status_code} na {url}: {detail}"
+                )
             return resp.json() if resp.content else {}
 
     def _get(self, url: str) -> dict:
         with httpx.Client(timeout=self._HTTP_TIMEOUT) as client:
             resp = client.get(url, headers=self._auth_headers())
-            resp.raise_for_status()
+            if resp.status_code >= 400:
+                detail = resp.text[:500] if resp.text else ""
+                raise RuntimeError(
+                    f"KSeF API {resp.status_code} na {url}: {detail}"
+                )
             return resp.json()
 
     def _get_raw(self, url: str) -> str:

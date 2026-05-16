@@ -1362,15 +1362,56 @@ def invoice_approve(
             payload=InvoiceApproveRequest(approved_by_user_id=current_user.id),
             actor_id=str(current_user.id),
         )
-    except ValueError as exc:
+    except (ValueError, RuntimeError) as exc:
         from urllib.parse import quote
         error_msg = quote(str(exc))
         return RedirectResponse(
             url=f"/ui/invoices/{invoice_id}/edit?error={error_msg}",
             status_code=303,
         )
+    except Exception as exc:
+        from urllib.parse import quote
+        error_msg = quote(f"Wysyłka do KSeF nie powiodła się: {exc}")
+        return RedirectResponse(
+            url=f"/ui/invoices/{invoice_id}/edit?error={error_msg}",
+            status_code=303,
+        )
 
-    return RedirectResponse(url=f"/ui/invoices/{invoice_id}", status_code=303)
+    from urllib.parse import urlencode
+    params = urlencode({"action_success": "Faktura zaakceptowana i wysłana do KSeF."})
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
+
+
+@router.post("/ui/invoices/{invoice_id}/retry-ksef")
+def invoice_retry_ksef(
+    invoice_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "reviewer")),
+):
+    from urllib.parse import urlencode, quote
+
+    try:
+        InvoiceService.retry_ksef_send(
+            db=db,
+            invoice_id=invoice_id,
+            actor_id=str(current_user.id),
+        )
+    except (ValueError, RuntimeError) as exc:
+        params = urlencode({"action_error": str(exc)})
+        return RedirectResponse(
+            url=f"/ui/invoices/{invoice_id}?{params}",
+            status_code=303,
+        )
+    except Exception as exc:
+        params = urlencode({"action_error": f"Wysyłka do KSeF nie powiodła się: {exc}"})
+        return RedirectResponse(
+            url=f"/ui/invoices/{invoice_id}?{params}",
+            status_code=303,
+        )
+
+    params = urlencode({"action_success": "Faktura wysłana do KSeF."})
+    return RedirectResponse(url=f"/ui/invoices/{invoice_id}?{params}", status_code=303)
 
 
 @router.post("/ui/invoices/{invoice_id}/validate-ksef")

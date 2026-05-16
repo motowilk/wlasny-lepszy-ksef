@@ -284,6 +284,20 @@ class KsefService:
                 rejected_numbers.append(inv_number)
                 results.append({"job_id": job.id, "result": "rejected", "error": str(exc)})
 
+                if invoice:
+                    db.add(
+                        InvoiceEvent(
+                            invoice_id=invoice.id,
+                            event_type="KSEF_POLL_FAILED",
+                            event_status="ERROR",
+                            actor_type="WORKER",
+                            actor_id="scheduler",
+                            message=f"Sprawdzanie statusu KSeF nie powiodło się: {exc}",
+                            details={"error": str(exc), "job_id": job.id},
+                        )
+                    )
+                    db.flush()
+
         if accepted_count or rejected_numbers:
             accepted_label = format_status_discord("ksef", "ACCEPTED")
             rejected_label = format_status_discord("ksef", "REJECTED")
