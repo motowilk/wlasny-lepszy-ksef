@@ -16,6 +16,7 @@ class AccountingBatch(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     period_year: Mapped[int] = mapped_column(nullable=False)
     period_month: Mapped[int] = mapped_column(nullable=False)
+    period_week: Mapped[int | None] = mapped_column(nullable=True)
     criteria_json: Mapped[dict | None] = mapped_column("criteria_json", JSON, nullable=True)
     item_count: Mapped[int] = mapped_column(nullable=False, server_default="0")
     created_by: Mapped[int | None] = mapped_column(
@@ -26,6 +27,7 @@ class AccountingBatch(Base):
         ForeignKey("app_user.id", ondelete="SET NULL"),
         nullable=True,
     )
+    send_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     metadata_json: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(

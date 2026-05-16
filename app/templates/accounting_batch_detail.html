@@ -22,7 +22,59 @@
     <p><strong>Typ:</strong> {{ batch.batch_type }}</p>
     <p><strong>Okres:</strong> {{ batch.period_year }}-{{ "%02d" | format(batch.period_month) }}</p>
     <p><strong>Liczba pozycji:</strong> {{ batch.item_count }}</p>
+    <p><strong>Zaplanowana wysyłka:</strong> {{ batch.send_at.strftime('%Y-%m-%d %H:%M') if batch.send_at else '—' }}</p>
+    {% if batch.sent_at %}
+    <p><strong>Wysłano:</strong> {{ batch.sent_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    {% endif %}
 </div>
+
+{% if batch.status == 'GENERATED' %}
+<div class="card" style="margin-top:16px">
+    <h2>Ustawienia batcha</h2>
+    <form method="post" action="/ui/accounting-batches/{{ batch.id }}/update-settings">
+        <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;padding:12px 16px;background:#f8f9fa;border-radius:8px;border:1px solid #e9ecef">
+            <div>
+                <label for="batch_type" style="font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Typ</label>
+                <select name="batch_type" id="batch_type" style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box;min-width:140px">
+                    <option value="MONTHLY" {{ 'selected' if batch.batch_type == 'MONTHLY' }}>MONTHLY</option>
+                    <option value="WEEKLY" {{ 'selected' if batch.batch_type == 'WEEKLY' }}>WEEKLY</option>
+                </select>
+            </div>
+            <div>
+                <label for="send_at" style="font-size:11px;font-weight:700;color:#495057;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:4px">Wyślij po</label>
+                <input type="datetime-local" name="send_at" id="send_at"
+                       value="{{ batch.send_at.strftime('%Y-%m-%dT%H:%M') if batch.send_at else '' }}"
+                       style="display:block;padding:5px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;background:#fff;height:32px;box-sizing:border-box">
+            </div>
+            <div>
+                <button type="submit" class="btn" style="height:32px;padding:5px 16px;font-size:13px;box-sizing:border-box">Zapisz</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+document.getElementById('batch_type').addEventListener('change', function() {
+    var sendAtInput = document.getElementById('send_at');
+    if (this.value === 'WEEKLY') {
+        var today = new Date();
+        var dayOfWeek = today.getDay();
+        var daysUntilMonday = (dayOfWeek === 0) ? 1 : (8 - dayOfWeek);
+        var monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() + daysUntilMonday);
+        var yyyy = monday.getFullYear();
+        var mm = String(monday.getMonth() + 1).padStart(2, '0');
+        var dd = String(monday.getDate()).padStart(2, '0');
+        sendAtInput.value = yyyy + '-' + mm + '-' + dd + 'T00:00';
+    } else {
+        var today = new Date();
+        var nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        var yyyy = nextMonth.getFullYear();
+        var mm = String(nextMonth.getMonth() + 1).padStart(2, '0');
+        sendAtInput.value = yyyy + '-' + mm + '-01T00:00';
+    }
+});
+</script>
+{% endif %}
 
 <section class="card" style="margin-top:16px">
     <h2>Faktury w batchu</h2>
@@ -51,9 +103,11 @@
                 </td>
                 <td>
                     <a class="btn-detail" href="/ui/invoices/{{ item.invoice_id }}" style="margin-right:6px">Szczegóły</a>
+                    {% if batch.status == 'GENERATED' %}
                     <form method="post" action="/ui/accounting-batches/{{ batch.id }}/remove-invoice/{{ item.invoice_id }}" class="inline-form" style="display:inline">
                         <button type="submit" class="btn secondary" style="font-size:12px;padding:4px 10px" onclick="return confirm('Usunąć fakturę z batcha?')">Usuń z batcha</button>
                     </form>
+                    {% endif %}
                 </td>
             </tr>
         {% endfor %}

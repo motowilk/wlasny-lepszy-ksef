@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from datetime import datetime, timezone
 
 from sqlalchemy import extract, or_, select
@@ -14,10 +14,30 @@ from app.db.models import (
 )
 
 ALLOWED_ACCOUNTING_STATUSES = {"new", "qualified", "batched", "sent_to_office", "rejected"}
+ALLOWED_BATCH_TYPES = ("MONTHLY", "WEEKLY")
 
 
 def _purchase_batch_period_start(period_year: int, period_month: int) -> date:
     return date(period_year, period_month, 1)
+
+
+def _default_send_at(batch_type: str, reference_date: date | None = None) -> datetime:
+    """Compute default send_at based on batch type.
+
+    MONTHLY: first day of next month 00:00 UTC
+    WEEKLY: Monday of next week 00:00 UTC
+    """
+    ref = reference_date or date.today()
+    if batch_type == "WEEKLY":
+        days_until_monday = (7 - ref.weekday()) % 7 or 7
+        target = ref + timedelta(days=days_until_monday)
+    else:
+        # MONTHLY: first day of next month
+        if ref.month == 12:
+            target = date(ref.year + 1, 1, 1)
+        else:
+            target = date(ref.year, ref.month + 1, 1)
+    return datetime(target.year, target.month, target.day, 0, 0, 0, tzinfo=timezone.utc)
 
 
 class AccountingService:
@@ -124,13 +144,13 @@ class AccountingService:
         try:
             _purchase_batch_period_start(period_year, period_month)
 
-            # Reuse existing open batch for this period if one exists
+            # Reuse existing open batch for this period if one exists (never reuse SENT)
             existing_batch = db.execute(
                 select(AccountingBatch).where(
                     AccountingBatch.batch_type == "MONTHLY",
                     AccountingBatch.period_year == period_year,
                     AccountingBatch.period_month == period_month,
-                    AccountingBatch.status.in_(("GENERATED", "SENT")),
+                    AccountingBatch.status == "GENERATED",
                 )
             ).scalar_one_or_none()
 
@@ -150,6 +170,7 @@ class AccountingService:
                     criteria_json=criteria_json,
                     created_by=created_by,
                     item_count=0,
+                    send_at=_default_send_at("MONTHLY", date(period_year, period_month, 1)),
                 )
                 db.add(batch)
                 db.flush()
@@ -235,13 +256,13 @@ class AccountingService:
         period_year = invoice.issue_date.year
         period_month = invoice.issue_date.month
 
-        # Reuse existing batch or create new one
+        # Reuse existing batch or create new one (never reuse SENT)
         existing_batch = db.execute(
             select(AccountingBatch).where(
                 AccountingBatch.batch_type == "MONTHLY",
                 AccountingBatch.period_year == period_year,
                 AccountingBatch.period_month == period_month,
-                AccountingBatch.status.in_(("GENERATED", "SENT")),
+                AccountingBatch.status == "GENERATED",
             )
         ).scalar_one_or_none()
 
@@ -260,6 +281,7 @@ class AccountingService:
                 period_month=period_month,
                 created_by=created_by,
                 item_count=0,
+                send_at=_default_send_at("MONTHLY", date(period_year, period_month, 1)),
             )
             db.add(batch)
             db.flush()
@@ -327,3 +349,40 @@ class AccountingService:
             batch.batch_code,
             batch.item_count,
         )
+
+    @staticmethod
+    def update_batch_settings(
+        db: Session,
+        batch_id: int,
+        batch_type: str | None = None,
+        send_at: datetime | None = None,
+    ) -> AccountingBatch:
+        """Update batch_type and/or send_at on a GENERATED batch."""
+        batch = db.get(AccountingBatch, batch_id)
+        if not batch:
+            raise ValueError(f"Batch id={batch_id} nie istnieje.")
+        if batch.status != "GENERATED":
+            raise ValueError("Nie można edytować batcha, który został już wysłany.")
+
+        if batch_type is not None:
+            if batch_type not in ALLOWED_BATCH_TYPES:
+                raise ValueError(f"Nieprawidłowy typ batcha: {batch_type}. Dozwolone: {ALLOWED_BATCH_TYPES}")
+            batch.batch_type = batch_type
+            # Update period fields based on type
+            if batch_type == "WEEKLY":
+                batch.period_week = date.today().isocalendar()[1]
+                batch.period_month = 0
+            else:
+                batch.period_week = None
+                if batch.period_month == 0:
+                    batch.period_month = date.today().month
+            # Recalculate default send_at if send_at not explicitly provided
+            if send_at is None:
+                batch.send_at = _default_send_at(batch_type)
+
+        if send_at is not None:
+            batch.send_at = send_at
+
+        db.commit()
+        db.refresh(batch)
+        return batch

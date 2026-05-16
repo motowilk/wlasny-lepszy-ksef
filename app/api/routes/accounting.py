@@ -8,6 +8,7 @@ from app.db.models import AccountingBatch, AppUser
 from app.schemas.accounting import (
     AccountingBatchGenerateRequest,
     AccountingBatchRead,
+    AccountingBatchUpdateRequest,
     AccountingStatusUpdateRequest,
     PurchaseQualificationRequest,
 )
@@ -115,6 +116,26 @@ def add_invoice_to_batch(
             db=db,
             invoice_id=invoice_id,
             created_by=current_user.id,
+        )
+        return AccountingBatchRead.model_validate(batch, from_attributes=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.patch("/accounting-batches/{batch_id}", response_model=AccountingBatchRead)
+def update_accounting_batch(
+    batch_id: int,
+    payload: AccountingBatchUpdateRequest,
+    db: Session = Depends(get_db),
+    _: AppUser = Depends(require_roles("admin", "owner")),
+) -> AccountingBatchRead:
+    """Update batch_type and/or send_at on a batch that hasn't been sent yet."""
+    try:
+        batch = AccountingService.update_batch_settings(
+            db=db,
+            batch_id=batch_id,
+            batch_type=payload.batch_type,
+            send_at=payload.send_at,
         )
         return AccountingBatchRead.model_validate(batch, from_attributes=True)
     except ValueError as exc:

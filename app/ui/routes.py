@@ -1327,14 +1327,66 @@ async def party_edit_submit(
 @router.get("/ui/accounting-batches")
 def accounting_batches_list(
     request: Request,
+    q: str = "",
+    year: str = "",
+    month: str = "",
+    week: str = "",
     db: Session = Depends(get_db),
     current_user: AppUser = Depends(get_current_ui_user),
 ):
-    items = list(
-        db.execute(select(AccountingBatch).order_by(AccountingBatch.id.desc()))
-        .scalars()
-        .all()
-    )
+    from sqlalchemy import or_
+
+    stmt = select(AccountingBatch).order_by(AccountingBatch.id.desc())
+
+    if year.strip():
+        try:
+            stmt = stmt.where(AccountingBatch.period_year == int(year))
+        except ValueError:
+            pass
+
+    if month.strip():
+        try:
+            stmt = stmt.where(AccountingBatch.period_month == int(month))
+        except ValueError:
+            pass
+
+    if week.strip():
+        try:
+            stmt = stmt.where(AccountingBatch.period_week == int(week))
+        except ValueError:
+            pass
+
+    items = list(db.execute(stmt).scalars().all())
+
+    # Text filter: match batch_code, batch_type, status OR invoice numbers inside batches
+    if q.strip():
+        q_lower = q.strip().lower()
+        filtered = []
+        for batch in items:
+            if (
+                q_lower in batch.batch_code.lower()
+                or q_lower in batch.batch_type.lower()
+                or q_lower in batch.status.lower()
+            ):
+                filtered.append(batch)
+                continue
+            # Check invoice numbers within the batch
+            batch_invoices = db.execute(
+                select(AccountingBatchInvoice)
+                .where(AccountingBatchInvoice.batch_id == batch.id)
+            ).scalars().all()
+            for bi in batch_invoices:
+                inv = db.get(Invoice, bi.invoice_id)
+                if inv and inv.invoice_number and q_lower in inv.invoice_number.lower():
+                    filtered.append(batch)
+                    break
+        items = filtered
+
+    # Compute distinct values for filter dropdowns from all batches
+    all_batches = list(db.execute(select(AccountingBatch)).scalars().all())
+    available_years = sorted({b.period_year for b in all_batches})
+    available_months = sorted({b.period_month for b in all_batches if b.period_month})
+    available_weeks = sorted({b.period_week for b in all_batches if b.period_week})
 
     return templates.TemplateResponse(
         "accounting_batches_list.html",
@@ -1342,6 +1394,13 @@ def accounting_batches_list(
             "request": request,
             "current_user": current_user,
             "items": items,
+            "q": q,
+            "filter_year": year,
+            "filter_month": month,
+            "filter_week": week,
+            "available_years": available_years,
+            "available_months": available_months,
+            "available_weeks": available_weeks,
         },
     )
 
@@ -1436,6 +1495,35 @@ def batch_remove_invoice(
 
         db.commit()
         params = urlencode({"action_success": f"Usunięto fakturę #{invoice_id} z batcha."})
+    except ValueError as exc:
+        params = urlencode({"action_error": str(exc)})
+
+    return RedirectResponse(url=f"/ui/accounting-batches/{batch_id}?{params}", status_code=303)
+
+
+@router.post("/ui/accounting-batches/{batch_id}/update-settings")
+def batch_update_settings(
+    batch_id: int,
+    batch_type: str = Form(...),
+    send_at: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin", "owner")),
+):
+    from urllib.parse import urlencode
+    from app.services.accounting_service import AccountingService
+
+    try:
+        parsed_send_at = None
+        if send_at.strip():
+            parsed_send_at = datetime.fromisoformat(send_at).replace(tzinfo=timezone.utc)
+
+        AccountingService.update_batch_settings(
+            db=db,
+            batch_id=batch_id,
+            batch_type=batch_type,
+            send_at=parsed_send_at,
+        )
+        params = urlencode({"action_success": "Ustawienia batcha zostały zapisane."})
     except ValueError as exc:
         params = urlencode({"action_error": str(exc)})
 

@@ -145,6 +145,18 @@ class Scheduler:
         elif job.job_type == "SEND_ACCOUNTING_BATCH":
             from app.services.accounting_service import AccountingService
             batch_id = int(job.related_entity_id or "0")
+
+            # Check if the batch send_at time has been reached
+            from app.db.models import AccountingBatch
+            batch = db.get(AccountingBatch, batch_id)
+            if batch and batch.send_at and datetime.now(tz=timezone.utc) < batch.send_at:
+                # Not yet time to send — reschedule
+                job.status = "NEW"
+                job.scheduled_at = batch.send_at
+                self._release_job_lock(job)
+                db.commit()
+                return
+
             AccountingService.send_accounting_batch_notification(db, batch_id)
             job.response_payload = {"status": "BATCH_NOTIFICATION_SENT", "batch_id": batch_id}
 

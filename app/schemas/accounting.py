@@ -36,8 +36,14 @@ class AccountingBatchRead(BaseModel):
     period_month: int
     criteria_json: dict[str, Any] | None = None
     item_count: int
+    send_at: datetime | None = None
     sent_at: datetime | None = None
     created_at: datetime
+
+
+class AccountingBatchUpdateRequest(BaseModel):
+    batch_type: str | None = Field(None, description="MONTHLY or WEEKLY")
+    send_at: datetime | None = None
 
 
 class AccountingBatchInvoiceRead(BaseModel):
