@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.adapters.notification.discord import DiscordNotificationAdapter
 from app.core.config import get_settings
+from app.core.status_registry import format_status_discord
 from app.db.models import IntegrationJob, Invoice, InvoiceEvent, InvoicePayload
 
 if TYPE_CHECKING:
@@ -284,9 +285,12 @@ class KsefService:
                 results.append({"job_id": job.id, "result": "rejected", "error": str(exc)})
 
         if accepted_count or rejected_numbers:
+            accepted_label = format_status_discord("ksef", "ACCEPTED")
+            rejected_label = format_status_discord("ksef", "REJECTED")
             msg = (
-                f"Sprawdzono faktury sprzeda\u017cowe, liczba poprawnych: {accepted_count}, "
-                f"liczba odrzuconych: {len(rejected_numbers)}"
+                f"Sprawdzono faktury sprzedażowe: "
+                f"{accepted_label} poprawnych: {accepted_count}, "
+                f"{rejected_label} odrzuconych: {len(rejected_numbers)}"
             )
             if rejected_numbers:
                 msg += "\nOdrzucone faktury: " + ", ".join(rejected_numbers)

@@ -37,6 +37,10 @@ from app.db.models import (
 )
 from app.adapters.notification.discord import DiscordNotificationAdapter
 from app.core.job_registry import JOB_TYPE_LABELS
+from app.core.status_registry import (
+    get_status_label,
+    get_status_pill_class,
+)
 from app.schemas.invoice import (
     InvoiceCreateRequest,
     InvoiceLinePayload,
@@ -64,6 +68,8 @@ def _plnum(value) -> str:
 
 
 templates.env.filters["plnum"] = _plnum
+templates.env.globals["status_label"] = get_status_label
+templates.env.globals["status_pill_class"] = get_status_pill_class
 
 router = APIRouter(tags=["ui"])
 

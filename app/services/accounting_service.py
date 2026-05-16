@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy import extract, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.status_registry import ALLOWED_ACCOUNTING_STATUSES
 from app.db.models import (
     AccountingBatch,
     AccountingBatchInvoice,
@@ -13,7 +14,6 @@ from app.db.models import (
     InvoiceEvent,
 )
 
-ALLOWED_ACCOUNTING_STATUSES = {"new", "qualified", "batched", "sent_to_office", "rejected"}
 ALLOWED_BATCH_TYPES = ("MONTHLY", "WEEKLY")
 
 
