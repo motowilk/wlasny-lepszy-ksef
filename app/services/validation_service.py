@@ -21,12 +21,13 @@ def _load_ksef_schema():
     try:
         from lxml import etree  # noqa: PLC0415
 
+        _safe_parser = etree.XMLParser(resolve_entities=False, no_network=True, dtd_validation=False, load_dtd=False)
         schemas_dir = Path(__file__).parent.parent / "adapters" / "ksef" / "schemas"
         xsd_path = schemas_dir / "schemat_FA3_v1-0E.xsd"
         if not xsd_path.exists():
             logger.warning("KSeF XSD schema file not found: %s", xsd_path)
             return None
-        xsd_doc = etree.parse(str(xsd_path))
+        xsd_doc = etree.parse(str(xsd_path), parser=_safe_parser)
         _ksef_schema = etree.XMLSchema(xsd_doc)
         logger.info("KSeF XSD schema loaded from %s", xsd_path)
     except Exception as exc:

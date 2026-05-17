@@ -124,7 +124,9 @@ def fetch_purchases_from_ksef(
             imported_ids=[inv.id for inv in imported],
         )
     except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).exception("KSeF fetch failed")
         raise HTTPException(
             status_code=500,
-            detail=f"Błąd podczas pobierania faktur z KSeF: {exc}",
+            detail="Błąd podczas pobierania faktur z KSeF. Spróbuj ponownie później.",
         ) from exc

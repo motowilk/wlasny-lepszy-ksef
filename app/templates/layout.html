@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>{{ title or "WŁASNY LEPSZY KSeF" }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% if csrf_token %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
     <link href="{{ root_path }}/static/styles.css" rel="stylesheet">
 </head>
 <body>
@@ -249,5 +250,19 @@
 }());
 </script>
 {% endif %}
+<script>
+(function(){
+    var m = document.querySelector('meta[name="csrf-token"]');
+    if (!m) return;
+    var t = m.getAttribute('content');
+    document.querySelectorAll('form[method="post"]').forEach(function(f){
+        if (!f.querySelector('input[name="_csrf"]')) {
+            var i = document.createElement('input');
+            i.type = 'hidden'; i.name = '_csrf'; i.value = t;
+            f.appendChild(i);
+        }
+    });
+})();
+</script>
 </body>
 </html>

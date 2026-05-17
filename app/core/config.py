@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     scheduler_stale_seconds: int = Field(default=30, alias="SCHEDULER_STALE_SECONDS")
 
     admin_default_password: str = Field(default="", alias="ADMIN_DEFAULT_PASSWORD")
-    ui_session_max_age: int = Field(default=43200, alias="UI_SESSION_MAX_AGE")
+    ui_session_max_age: int = Field(default=7200, alias="UI_SESSION_MAX_AGE")
 
     discord_webhook_url: str = Field(default="", alias="DISCORD_WEBHOOK_URL")
 

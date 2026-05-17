@@ -14,6 +14,13 @@ from app.schemas.invoice import (
 
 FA3_NS = "http://crd.gov.pl/wzor/2025/06/25/13775/"
 
+_SAFE_PARSER = etree.XMLParser(
+    resolve_entities=False,
+    no_network=True,
+    dtd_validation=False,
+    load_dtd=False,
+)
+
 
 def _ns(tag: str) -> str:
     return f"{{{FA3_NS}}}{tag}"
@@ -177,7 +184,10 @@ def parse_fa3_xml(xml_content: str, direction_code: str = "PURCHASE") -> Invoice
     Returns:
         InvoiceCreateRequest ready to be passed to InvoiceService.create_invoice().
     """
-    root = etree.fromstring(xml_content.encode("utf-8") if isinstance(xml_content, str) else xml_content)
+    root = etree.fromstring(
+        xml_content.encode("utf-8") if isinstance(xml_content, str) else xml_content,
+        parser=_SAFE_PARSER,
+    )
 
     # ── Podmiot1 (seller) ─────────────────────────────────────────────────
     podmiot1 = root.find(_ns("Podmiot1"))

@@ -18,12 +18,21 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.core.iban_lookup import resolve_iban
 from app.core.security import (
+    DUMMY_PASSWORD_HASH,
+    MAX_PASSWORD_LENGTH,
     create_totp_pending_token,
     create_ui_session_token,
     decode_totp_pending_token,
     decode_ui_session_token,
+    decrypt_totp_secret,
+    encrypt_totp_secret,
+    generate_csrf_token,
     get_password_hash,
+    is_totp_encrypted,
     normalize_username,
+    record_failed_login_attempt,
+    reset_failed_login_attempts,
+    verify_csrf_token,
     verify_password,
 )
 from app.db.dependencies import get_db
@@ -54,17 +63,47 @@ from app.schemas.invoice import (
 )
 from app.services.invoice_service import InvoiceService
 from app.services.validation_service import ValidationService
+from app.services.audit_service import log_audit
 
 from urllib.parse import urlparse
 
 _TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "templates"
 _UI_SESSION_NONCE_KEY = "ui_session_nonce"
+_SESSION_COOKIE_NAME = "__Host-sid" if settings.base_url.startswith("https://") else "sid"
+_UI_OPERATION_ERROR_MESSAGES = {
+    "purchase_import": "Nie udalo sie pobrac faktur z KSeF. Sprobuj ponownie za chwile albo sprawdz konfiguracje integracji.",
+    "invoice_notification": "Nie udalo sie wyslac powiadomienia e-mail.",
+    "invoice_approve": "Nie udalo sie zaakceptowac faktury i przekazac jej do KSeF.",
+    "invoice_retry": "Nie udalo sie ponowic wysylki do KSeF.",
+    "batch_notification": "Nie udalo sie wyslac powiadomienia testowego e-mail.",
+}
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 # Derive root_path from BASE_URL so templates can prefix all URLs.
 # Locally (BASE_URL=http://127.0.0.1:8000) this is ""; on the server it's "/wlasny-lepszy-ksef-test".
 _root_path = urlparse(settings.base_url).path.rstrip("/")
 templates.env.globals["root_path"] = _root_path
+
+
+def _inject_csrf(context: dict) -> dict:
+    """Auto-inject csrf_token into template context when current_user is present."""
+    user = context.get("current_user")
+    if user and hasattr(user, "metadata_json"):
+        nonce = (user.metadata_json or {}).get(_UI_SESSION_NONCE_KEY)
+        if nonce:
+            context.setdefault("csrf_token", generate_csrf_token(nonce, settings.secret_key))
+    return context
+
+
+_original_template_response = templates.TemplateResponse
+
+
+def _csrf_template_response(name, context, **kwargs):
+    _inject_csrf(context)
+    return _original_template_response(name, context, **kwargs)
+
+
+templates.TemplateResponse = _csrf_template_response
 
 
 def _plnum(value) -> str:
@@ -81,12 +120,19 @@ def _plnum(value) -> str:
 templates.env.filters["plnum"] = _plnum
 templates.env.globals["status_label"] = get_status_label
 templates.env.globals["status_pill_class"] = get_status_pill_class
+templates.env.globals["csrf_hidden_input"] = (
+    lambda token: f'<input type="hidden" name="_csrf" value="{token}">' if token else ""
+)
 
 router = APIRouter(tags=["ui"])
 
 
 def _use_secure_cookies() -> bool:
     return settings.base_url.startswith("https://")
+
+
+def _ui_operation_error(operation: str) -> str:
+    return _UI_OPERATION_ERROR_MESSAGES.get(operation, "Operacja nie powiodla sie.")
 
 
 def _get_user_session_nonce(user: AppUser) -> str | None:
@@ -100,6 +146,27 @@ def _rotate_user_session_nonce(user: AppUser) -> str:
     metadata[_UI_SESSION_NONCE_KEY] = secrets.token_urlsafe(24)
     user.metadata_json = metadata
     return metadata[_UI_SESSION_NONCE_KEY]
+
+
+def _set_user_password(user: AppUser, password: str) -> None:
+    user.password_hash = get_password_hash(password)
+    reset_failed_login_attempts(user)
+    _rotate_user_session_nonce(user)
+
+
+def _get_totp_plain(user: AppUser) -> str | None:
+    """Return the plaintext TOTP secret, decrypting if necessary."""
+    raw = user.totp_secret
+    if not raw:
+        return None
+    if is_totp_encrypted(raw):
+        return decrypt_totp_secret(raw, settings.secret_key)
+    return raw
+
+
+def _store_totp_secret(user: AppUser, plain_secret: str) -> None:
+    """Encrypt and store the TOTP secret."""
+    user.totp_secret = encrypt_totp_secret(plain_secret, settings.secret_key)
 
 
 def _resolve_ui_user(db: Session, session_token: str | None) -> AppUser:
@@ -126,10 +193,26 @@ def _resolve_ui_user(db: Session, session_token: str | None) -> AppUser:
     return user
 
 
+def _get_csrf_token_for_user(user: AppUser) -> str:
+    """Generate a CSRF token for the given authenticated user."""
+    nonce = _get_user_session_nonce(user)
+    if not nonce:
+        return ""
+    return generate_csrf_token(nonce, settings.secret_key)
+
+
+def _verify_csrf(request_token: str | None, user: AppUser) -> bool:
+    """Verify that the submitted CSRF token is valid for this user."""
+    nonce = _get_user_session_nonce(user)
+    if not nonce:
+        return False
+    return verify_csrf_token(request_token, nonce, settings.secret_key)
+
+
 @router.get("/ui/api/worker-status")
 def ui_worker_status(
     db: Session = Depends(get_db),
-    session_token: str | None = Cookie(default=None, alias="session"),
+    session_token: str | None = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
 ):
     """Return live worker heartbeat data for the status widget.
 
@@ -248,7 +331,7 @@ class UIForbidden(Exception):
 
 def get_current_ui_user(
     db: Session = Depends(get_db),
-    session_token: str | None = Cookie(default=None, alias="session"),
+    session_token: str | None = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
 ) -> AppUser:
     return _resolve_ui_user(db, session_token)
 
@@ -260,6 +343,15 @@ def ui_require_roles(*role_codes: str):
             raise UIForbidden(f"Brak wymaganej roli. Wymagane: {', '.join(role_codes)}")
         return current_user
     return dependency
+
+
+async def _csrf_form_token(request: Request) -> str | None:
+    """Extract _csrf from form data. Returns None if not present."""
+    content_type = request.headers.get("content-type", "")
+    if "form" in content_type:
+        form = await request.form()
+        return form.get("_csrf")
+    return None
 
 
 @router.get("/")
@@ -279,6 +371,7 @@ def login_submit(
     password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    password = password[:MAX_PASSWORD_LENGTH]
     normalized = normalize_username(username)
     stmt = (
         select(AppUser)
@@ -286,13 +379,20 @@ def login_submit(
         .options(joinedload(AppUser.roles).joinedload(AppUserRole.role))
     )
     user = db.execute(stmt).unique().scalar_one_or_none()
+    password_hash = user.password_hash if user else DUMMY_PASSWORD_HASH
+    password_valid = verify_password(password, password_hash)
 
-    if (
-        not user
-        or not user.is_active
-        or user.is_locked
-        or not verify_password(password, user.password_hash)
-    ):
+    if not user or not password_valid:
+        if user and user.is_active and not user.is_locked:
+            record_failed_login_attempt(user)
+            db.commit()
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request, "error": "Nieprawidłowy login lub hasło."},
+            status_code=401,
+        )
+
+    if not user.is_active or user.is_locked:
         return templates.TemplateResponse(
             "login.html",
             {"request": request, "error": "Nieprawidłowy login lub hasło."},
@@ -314,22 +414,24 @@ def login_submit(
         )
         return resp
 
+    reset_failed_login_attempts(user)
     user.last_login_at = datetime.now(tz=timezone.utc)
     session_nonce = _rotate_user_session_nonce(user)
     db.commit()
 
     DiscordNotificationAdapter().send(
-        f"Właśnie zalogował się {user.display_name} - {user.email} - {datetime.now(tz=timezone.utc)}"
+        f"Właśnie zalogował się {user.display_name.split(' ')[0]} - {datetime.now(tz=timezone.utc)}"
     )
 
     token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
     resp = RedirectResponse(url=f"{_root_path}/ui", status_code=303)
     resp.set_cookie(
-        "session",
+        _SESSION_COOKIE_NAME,
         token,
         httponly=True,
         samesite="lax",
         secure=_use_secure_cookies(),
+        path="/",
         max_age=settings.ui_session_max_age,
     )
     return resp
@@ -364,7 +466,10 @@ def totp_submit(
     if not user or not user.is_active or user.is_locked:
         return RedirectResponse(url=f"{_root_path}/ui/login", status_code=302)
 
-    if not pyotp.TOTP(user.totp_secret).verify(code.strip()):
+    totp_plain = _get_totp_plain(user)
+    if not totp_plain or not pyotp.TOTP(totp_plain).verify(code.strip(), valid_window=0):
+        record_failed_login_attempt(user)
+        db.commit()
         resp = templates.TemplateResponse(
             "totp.html",
             {"request": request, "error": "Nieprawidłowy kod. Spróbuj ponownie."},
@@ -372,22 +477,41 @@ def totp_submit(
         )
         return resp
 
+    # Prevent TOTP replay: reject if the same time-step was already used
+    import time as _time
+    current_step = int(_time.time()) // 30
+    metadata = dict(user.metadata_json or {})
+    last_totp_step = metadata.get("last_totp_step")
+    if last_totp_step == current_step:
+        record_failed_login_attempt(user)
+        db.commit()
+        resp = templates.TemplateResponse(
+            "totp.html",
+            {"request": request, "error": "Nieprawidłowy kod. Spróbuj ponownie."},
+            status_code=401,
+        )
+        return resp
+    metadata["last_totp_step"] = current_step
+    user.metadata_json = metadata
+
+    reset_failed_login_attempts(user)
     user.last_login_at = datetime.now(tz=timezone.utc)
     session_nonce = _rotate_user_session_nonce(user)
     db.commit()
 
     DiscordNotificationAdapter().send(
-        f"Właśnie zalogował się {user.display_name} - {user.email} - {datetime.now(tz=timezone.utc)}"
+        f"Właśnie zalogował się {user.display_name.split(' ')[0]} - {datetime.now(tz=timezone.utc)}"
     )
 
     session_token = create_ui_session_token(user.id, settings.secret_key, session_nonce)
     resp = RedirectResponse(url=f"{_root_path}/ui", status_code=303)
     resp.set_cookie(
-        "session",
+        _SESSION_COOKIE_NAME,
         session_token,
         httponly=True,
         samesite="lax",
         secure=_use_secure_cookies(),
+        path="/",
         max_age=settings.ui_session_max_age,
     )
     resp.delete_cookie("totp_pending")
@@ -397,7 +521,7 @@ def totp_submit(
 @router.post("/ui/logout")
 def logout(
     db: Session = Depends(get_db),
-    session_token: str | None = Cookie(default=None, alias="session"),
+    session_token: str | None = Cookie(default=None, alias=_SESSION_COOKIE_NAME),
 ):
     try:
         user = _resolve_ui_user(db, session_token)
@@ -409,7 +533,7 @@ def logout(
         db.commit()
 
     resp = RedirectResponse(url=f"{_root_path}/ui/login", status_code=302)
-    resp.delete_cookie("session", secure=_use_secure_cookies())
+    resp.delete_cookie(_SESSION_COOKIE_NAME, secure=_use_secure_cookies(), path="/")
     return resp
 
 
@@ -533,7 +657,7 @@ def purchase_invoices_fetch_ksef(
     date_from: str = Form(...),
     date_to: str = Form(...),
     db: Session = Depends(get_db),
-    current_user: AppUser = Depends(get_current_ui_user),
+    current_user: AppUser = Depends(ui_require_roles("admin", "agent", "owner")),
 ):
     from app.services.ksef_import_service import KsefImportService
     from urllib.parse import urlencode
@@ -546,8 +670,8 @@ def purchase_invoices_fetch_ksef(
             actor_id=str(current_user.id),
         )
         params = urlencode({"fetch_result": len(imported)})
-    except Exception as exc:
-        params = urlencode({"fetch_error": str(exc)})
+    except Exception:
+        params = urlencode({"fetch_error": _ui_operation_error("purchase_import")})
 
     return RedirectResponse(
         url=f"/ui/purchase-invoices?{params}",
@@ -1346,9 +1470,9 @@ def invoice_send_notification(
         if notification.status == "SENT":
             params = urlencode({"action_success": f"Wysłano powiadomienie na {notification.recipient}."})
         else:
-            params = urlencode({"action_error": notification.error_message or "Wysyłka nie powiodła się."})
-    except (ValueError, RuntimeError) as exc:
-        params = urlencode({"action_error": str(exc)})
+            params = urlencode({"action_error": _ui_operation_error("invoice_notification")})
+    except (ValueError, RuntimeError):
+        params = urlencode({"action_error": _ui_operation_error("invoice_notification")})
 
     return RedirectResponse(url=f"{_root_path}/ui/invoices/{invoice_id}?{params}", status_code=303)
 
@@ -1369,16 +1493,16 @@ def invoice_approve(
             payload=InvoiceApproveRequest(approved_by_user_id=current_user.id),
             actor_id=str(current_user.id),
         )
-    except (ValueError, RuntimeError) as exc:
+    except (ValueError, RuntimeError):
         from urllib.parse import quote
-        error_msg = quote(str(exc))
+        error_msg = quote(_ui_operation_error("invoice_approve"))
         return RedirectResponse(
             url=f"/ui/invoices/{invoice_id}/edit?error={error_msg}",
             status_code=303,
         )
-    except Exception as exc:
+    except Exception:
         from urllib.parse import quote
-        error_msg = quote(f"Wysyłka do KSeF nie powiodła się: {exc}")
+        error_msg = quote(_ui_operation_error("invoice_approve"))
         return RedirectResponse(
             url=f"/ui/invoices/{invoice_id}/edit?error={error_msg}",
             status_code=303,
@@ -1404,14 +1528,14 @@ def invoice_retry_ksef(
             invoice_id=invoice_id,
             actor_id=str(current_user.id),
         )
-    except (ValueError, RuntimeError) as exc:
-        params = urlencode({"action_error": str(exc)})
+    except (ValueError, RuntimeError):
+        params = urlencode({"action_error": _ui_operation_error("invoice_retry")})
         return RedirectResponse(
             url=f"/ui/invoices/{invoice_id}?{params}",
             status_code=303,
         )
-    except Exception as exc:
-        params = urlencode({"action_error": f"Wysyłka do KSeF nie powiodła się: {exc}"})
+    except Exception:
+        params = urlencode({"action_error": _ui_operation_error("invoice_retry")})
         return RedirectResponse(
             url=f"/ui/invoices/{invoice_id}?{params}",
             status_code=303,
@@ -2054,8 +2178,8 @@ def batch_send_test_notification(
             attachments=attachments or None,
         )
         params = urlencode({"action_success": f"Wysłano powiadomienie testowe na {recipient}."})
-    except Exception as exc:
-        params = urlencode({"action_error": str(exc)})
+    except Exception:
+        params = urlencode({"action_error": _ui_operation_error("batch_notification")})
 
     return RedirectResponse(url=f"{_root_path}/ui/pakiety-ksiegowe/{batch_id}?{params}", status_code=303)
 
@@ -2169,6 +2293,9 @@ def user_create_submit(
     if len(password) < 10:
         return _error("Hasło musi mieć co najmniej 10 znaków.")
 
+    if len(password) > MAX_PASSWORD_LENGTH:
+        return _error(f"Hasło nie może mieć więcej niż {MAX_PASSWORD_LENGTH} znaków.")
+
     totp_secret = pyotp.random_base32() if enable_2fa == "1" else None
     new_user = AppUser(
         user_uuid=str(uuid.uuid4()),
@@ -2179,7 +2306,7 @@ def user_create_submit(
         auth_provider="LOCAL",
         is_active=(is_active == "1"),
         is_locked=(is_locked == "1"),
-        totp_secret=totp_secret,
+        totp_secret=encrypt_totp_secret(totp_secret, settings.secret_key) if totp_secret else None,
     )
     db.add(new_user)
     db.flush()
@@ -2189,6 +2316,9 @@ def user_create_submit(
         for role in roles:
             db.add(AppUserRole(user_id=new_user.id, role_id=role.id))
 
+    log_audit(db, actor_user_id=current_user.id, action="user_create",
+              target_type="user", target_id=new_user.id,
+              detail=f"username={normalized}, roles={role_codes}", request=request)
     db.commit()
 
     if totp_secret:
@@ -2211,7 +2341,11 @@ def user_totp_setup(
     if not user or not user.totp_secret:
         return RedirectResponse(url=f"{_root_path}/ui/users", status_code=302)
 
-    uri = pyotp.totp.TOTP(user.totp_secret).provisioning_uri(
+    totp_plain = _get_totp_plain(user)
+    if not totp_plain:
+        return RedirectResponse(url=f"{_root_path}/ui/users", status_code=302)
+
+    uri = pyotp.totp.TOTP(totp_plain).provisioning_uri(
         name=user.username, issuer_name="KSeF ERP"
     )
 
@@ -2233,7 +2367,7 @@ def user_totp_setup(
             "current_user": current_user,
             "user": user,
             "qr_svg": svg,
-            "totp_secret": user.totp_secret,
+            "totp_secret": totp_plain,
         },
     )
 
@@ -2315,12 +2449,27 @@ def user_edit_submit(
             status_code=400,
         )
 
+    if password and len(password) > MAX_PASSWORD_LENGTH:
+        return templates.TemplateResponse(
+            "user_form.html",
+            {
+                "request": request,
+                "current_user": current_user,
+                "user": user,
+                "all_roles": all_roles,
+                "user_role_codes": set(role_codes),
+                "mode": "edit",
+                "error": f"Hasło nie może mieć więcej niż {MAX_PASSWORD_LENGTH} znaków.",
+            },
+            status_code=400,
+        )
+
     user.display_name = display_name.strip()
     user.email = email.strip() or None
     user.is_active = (is_active == "1")
     user.is_locked = (is_locked == "1")
     if password:
-        user.password_hash = get_password_hash(password)
+        _set_user_password(user, password)
 
     db.execute(sql_delete(AppUserRole).where(AppUserRole.user_id == user_id))
     if role_codes:
@@ -2328,6 +2477,11 @@ def user_edit_submit(
         for role in roles:
             db.add(AppUserRole(user_id=user.id, role_id=role.id))
 
+    changes = f"roles={role_codes}"
+    if password:
+        changes += ", password_changed=True"
+    log_audit(db, actor_user_id=current_user.id, action="user_edit",
+              target_type="user", target_id=user_id, detail=changes, request=request)
     db.commit()
     return RedirectResponse(url=f"{_root_path}/ui/users", status_code=303)
 
@@ -2344,7 +2498,10 @@ def user_totp_reset(
     if not user:
         return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
-    user.totp_secret = pyotp.random_base32()
+    new_secret = pyotp.random_base32()
+    _store_totp_secret(user, new_secret)
+    log_audit(db, actor_user_id=current_user.id, action="totp_reset",
+              target_type="user", target_id=user_id, request=None)
     db.commit()
     return RedirectResponse(url=f"{_root_path}/ui/users/{user_id}/totp-setup", status_code=303)
 
@@ -2360,6 +2517,27 @@ def user_totp_disable(
         return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     user.totp_secret = None
+    log_audit(db, actor_user_id=current_user.id, action="totp_disable",
+              target_type="user", target_id=user_id, request=None)
+    db.commit()
+    return RedirectResponse(url=f"{_root_path}/ui/users/{user_id}/edit", status_code=303)
+
+
+@router.post("/ui/users/{user_id}/unlock")
+def user_unlock(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: AppUser = Depends(ui_require_roles("admin")),
+):
+    """Admin action: unlock a user that was locked out by failed login attempts."""
+    user = db.get(AppUser, user_id)
+    if not user:
+        return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
+
+    user.is_locked = False
+    user.failed_login_attempts = 0
+    log_audit(db, actor_user_id=current_user.id, action="user_unlock",
+              target_type="user", target_id=user_id, request=None)
     db.commit()
     return RedirectResponse(url=f"{_root_path}/ui/users/{user_id}/edit", status_code=303)
 
@@ -2378,6 +2556,9 @@ def user_delete(
         return RedirectResponse(url=f"{_root_path}/ui/users?error={_url_quote('Użytkownik nie istnieje.')}", status_code=303)
 
     db.execute(sql_delete(AppUserRole).where(AppUserRole.user_id == user_id))
+    log_audit(db, actor_user_id=current_user.id, action="user_delete",
+              target_type="user", target_id=user_id,
+              detail=f"username={user.username}", request=None)
     db.delete(user)
     db.commit()
     return RedirectResponse(url=f"{_root_path}/ui/users", status_code=303)

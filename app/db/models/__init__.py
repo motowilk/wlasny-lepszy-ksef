@@ -1,4 +1,5 @@
 from app.db.models.accounting_batch import AccountingBatch, AccountingBatchInvoice
+from app.db.models.admin_audit_log import AdminAuditLog
 from app.db.models.app_role import AppRole
 from app.db.models.app_user import AppUser, AppUserRole
 from app.db.models.dicts import (
@@ -26,6 +27,7 @@ from app.db.models.worker_heartbeat import WorkerHeartbeat
 __all__ = [
     "AccountingBatch",
     "AccountingBatchInvoice",
+    "AdminAuditLog",
     "AppRole",
     "AppUser",
     "AppUserRole",

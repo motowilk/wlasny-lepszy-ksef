@@ -83,6 +83,16 @@
 
 {% if mode == "edit" %}
 <hr style="margin:2rem 0">
+
+{% if user.is_locked and user.failed_login_attempts >= 3 %}
+<div style="margin-bottom:1.5rem;padding:.75rem 1rem;background:#fdf0ef;border:1px solid #e8b4b0;border-radius:4px">
+    <strong>⚠️ Konto zablokowane automatycznie</strong> po {{ user.failed_login_attempts }} nieudanych próbach logowania.
+    <form method="post" action="{{ root_path }}/ui/users/{{ user.id }}/unlock" style="display:inline;margin-left:1rem">
+        <button type="submit" class="btn">Odblokuj konto</button>
+    </form>
+</div>
+{% endif %}
+
 <h3>Weryfikacja dwuskładnikowa (TOTP)</h3>
 {% if user.totp_secret %}
 <p>2FA jest <strong>włączone</strong>.</p>

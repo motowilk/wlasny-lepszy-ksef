@@ -6,15 +6,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
-from app.core.security import normalize_username, verify_password
+from app.core.security import (
+    DUMMY_PASSWORD_HASH,
+    MAX_PASSWORD_LENGTH,
+    normalize_username,
+    record_failed_login_attempt,
+    reset_failed_login_attempts,
+    verify_password,
+)
 from app.db.dependencies import get_db
 from app.db.models import AppUser, AppUserRole
 
 security = HTTPBasic(realm=settings.basic_auth_realm)
-
-# Pre-computed hash used only for constant-time dummy checks when a user is not
-# found, to prevent timing-based username enumeration.
-_DUMMY_HASH = "$2b$12$KIX/TAtOSw8A4uFGrwFnGuvVVz3SsLOJo0bMLXkn9E2z8CRF.pBGG"
 
 
 def get_current_user(
@@ -22,6 +25,7 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> AppUser:
     username = normalize_username(credentials.username)
+    password = credentials.password[:MAX_PASSWORD_LENGTH]
 
     stmt = (
         select(AppUser)
@@ -29,11 +33,13 @@ def get_current_user(
         .options(joinedload(AppUser.roles).joinedload(AppUserRole.role))
     )
     user = db.execute(stmt).unique().scalar_one_or_none()
+    password_hash = user.password_hash if user else DUMMY_PASSWORD_HASH
+    password_valid = verify_password(password, password_hash)
 
-    if not user:
-        # Always run the hash check to keep response time constant and prevent
-        # timing-based username enumeration.
-        verify_password(credentials.password, _DUMMY_HASH)
+    if not user or not password_valid:
+        if user and user.is_active and not user.is_locked:
+            record_failed_login_attempt(user)
+            db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Nieprawidłowy login lub hasło.",
@@ -46,12 +52,9 @@ def get_current_user(
             detail="Konto jest nieaktywne lub zablokowane.",
         )
 
-    if not verify_password(credentials.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Nieprawidłowy login lub hasło.",
-            headers={"WWW-Authenticate": "Basic"},
-        )
+    if user.failed_login_attempts:
+        reset_failed_login_attempts(user)
+        db.commit()
 
     return user
 
