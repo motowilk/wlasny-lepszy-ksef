@@ -60,6 +60,7 @@ Thumbs.db
 
 # === Deployment docs (contain server-specific paths) ===
 DEPLOY_PRODUCTION.md
+DEPLOY_INSTRUCTIONS_TEST.md
 
 # === Database files ===
 *.db
