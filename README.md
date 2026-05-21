@@ -226,7 +226,7 @@ SHA256 = Base64URL-encoded hash XML faktury (pole `xml_sha256`: hex → bytes �
 
 ### Założenia
 
-- Python 3.12+
+- Python 3.11+
 - MySQL 8.0+ (lokalnie lub Docker), kodowanie `utf8mb4`
 - Git (opcjonalnie)
 
